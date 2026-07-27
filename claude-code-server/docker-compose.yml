@@ -13,7 +13,7 @@ services:
     working_dir: /workspace
     volumes:
       # Persists `claude login` and all other dotfiles/state across container restarts/rebuilds.
-      - ${WORKSPACE_DIR:-./claude_home}:/home/claude
+      - ./claude_home:/home/claude
       # Project code Claude Code will actually work on.
       - ${WORKSPACE_DIR:-./workspace}:/workspace
       # Lets `docker` commands inside the container control the HOST's Docker daemon.
