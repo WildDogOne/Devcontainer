@@ -96,8 +96,7 @@ steps:
 optional here — if unset you'll be prompted):
 
 ```bash
-docker compose run --rm -it --entrypoint pcloudcc pcloud \
-    -u "$PCLOUD_USERNAME" -p -s -m /pcloud
+docker compose run --rm -it --entrypoint pcloudcc pcloud -u "$PCLOUD_USERNAME" -p -s -m /pcloud
 ```
 
 `-p` prompts for the password (hidden input), `-s` saves the resulting session to `~/.pcloud/data.db` inside the
