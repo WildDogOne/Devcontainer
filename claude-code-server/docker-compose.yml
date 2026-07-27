@@ -19,6 +19,3 @@ services:
       # Lets `docker` commands inside the container control the HOST's Docker daemon.
       # Anything with access to this socket can trivially get root on the host - see README.
       # - /var/run/docker.sock:/var/run/docker.sock
-
-volumes:
-  claude-home:
