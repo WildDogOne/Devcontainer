@@ -1,0 +1,3 @@
+[submodule "claude-code-server/pcloud"]
+	path = claude-code-server/pcloud
+	url = https://github.com/ibressler/pcloudcc-service.git
