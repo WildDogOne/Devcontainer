@@ -4,7 +4,8 @@ A persistent Docker Compose service for running [Claude Code](https://docs.claud
 server: the container stays running in the background and you attach to it with `docker compose exec` whenever you
 want a session, rather than it being tied to any one interactive `docker run`.
 
-Alpine-based image with Python, Node.js, git, GitHub CLI (`gh`), ripgrep, jq, and fzf alongside the `claude` CLI.
+Alpine-based image with Python, Node.js, Bun (needed by the Telegram plugin), git, GitHub CLI (`gh`), ripgrep, jq,
+and fzf alongside the `claude` CLI.
 
 ## First-time setup
 
@@ -41,9 +42,15 @@ docker compose exec claude-code zsh
 From there, run `claude` as usual. On first run it'll print a login URL — open it in any browser (doesn't need to
 be on the server), authorize, and paste the code back into the terminal.
 
-Login state persists in the `claude-home` named volume (mounted at `/home/claude`), so you only need to log in once
-— it survives container restarts and rebuilds. It's only lost if you explicitly remove the volume
-(`docker compose down -v`).
+If you're using the Telegram bot plugin (`TELEGRAM_BOT_TOKEN` set in `.env`), start Claude Code with:
+
+```bash
+claude --channels plugin:telegram@claude-plugins-official
+```
+
+Login state persists in the `claude_home/` directory (bind-mounted at `/home/claude`), so you only need to log in
+once — it survives container restarts and rebuilds. It's only lost if you explicitly delete that directory on the
+host (`docker compose down -v` does **not** touch it — there are no named volumes here, only bind mounts).
 
 To stop/start without losing anything:
 
@@ -96,8 +103,7 @@ steps:
 optional here — if unset you'll be prompted):
 
 ```bash
-docker compose run --rm -it --entrypoint pcloudcc pcloud \
-    -u "$PCLOUD_USERNAME" -p -s -m /pcloud
+docker compose run --rm -it --entrypoint pcloudcc pcloud -u "$PCLOUD_USERNAME" -p -s -m /pcloud
 ```
 
 `-p` prompts for the password (hidden input), `-s` saves the resulting session to `~/.pcloud/data.db` inside the
@@ -105,7 +111,7 @@ docker compose run --rm -it --entrypoint pcloudcc pcloud \
 prompted for the code (or can type `sms` to have one texted to you) right after the password. Once you see it
 reach `READY` status, `Ctrl-C` to stop it cleanly.
 
-**2. Headless runs.** `~/.pcloud/data.db` is persisted via the `pcloud_home` volume (`PCLOUD_HOME_DIR` in `.env`,
+**2. Headless runs.** `~/.pcloud/data.db` is persisted via the bind-mounted `pcloud_home/` directory (`PCLOUD_HOME_DIR` in `.env`,
 `./pcloud_home` by default), so from then on `pcloud/entrypoint.sh` finds the saved session and starts
 `pcloudcc` without needing `PCLOUD_PASSWORD` or any prompt at all — this is what `docker compose up -d` runs.
 If you skip step 1 (no saved session and no `PCLOUD_PASSWORD` set), the container exits immediately with an error
@@ -156,6 +162,7 @@ docker compose up -d
 | `docker-compose.yml`   | Service definitions for both `claude-code` and `pcloud`, volumes, bind mounts |
 | `.env.example`         | Template for local config — copy to `.env` (git-ignored)            |
 | `workspace/`           | Default bind-mount target if you don't override `WORKSPACE_DIR`     |
+| `claude_home/`         | Bind-mount target for `/home/claude` — holds the persisted `claude login` state |
 | `pcloud/Dockerfile`    | Image definition for the `pcloud` sync container (builds pcloudcc-lneely from source) |
 | `pcloud/entrypoint.sh` | Runs `pcloudcc` and mounts pCloud at `/pcloud`                       |
 | `pcloud_sync/`         | Default bind-mount target if you don't override `PCLOUD_SYNC_DIR`   |

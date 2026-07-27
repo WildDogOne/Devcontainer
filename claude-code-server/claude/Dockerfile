@@ -17,6 +17,8 @@ RUN apk add --no-cache \
     sudo \
     shadow \
     libstdc++ \
+    # unzip: required by the Bun install script to extract its release archive
+    unzip \
     # gcompat: Claude Code's own binary/tooling can pull in glibc-built pieces
     # that fail under musl without this compatibility shim.
     gcompat
@@ -39,6 +41,12 @@ RUN addgroup -g $USER_GID $USERNAME \
 RUN npm install -g @anthropic-ai/claude-code
 
 USER $USERNAME
+
+# Bun is required by the Telegram plugin
+ENV BUN_INSTALL="/home/${USERNAME}/.bun"
+ENV PATH="$BUN_INSTALL/bin:$PATH"
+RUN curl -fsSL https://bun.sh/install | bash
+
 WORKDIR /workspace
 
 CMD ["sleep", "infinity"]
