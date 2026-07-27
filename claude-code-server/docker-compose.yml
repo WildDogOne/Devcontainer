@@ -1,0 +1,24 @@
+services:
+  claude-code:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DOCKER_GID: ${DOCKER_GID:-999}
+    container_name: claude-code
+    restart: unless-stopped
+    init: true
+    tty: true
+    stdin_open: true
+    working_dir: /workspace
+    volumes:
+      # Persists `claude login` and all other dotfiles/state across container restarts/rebuilds.
+      - claude-home:/home/claude
+      # Project code Claude Code will actually work on.
+      - ${WORKSPACE_DIR:-./workspace}:/workspace
+      # Lets `docker` commands inside the container control the HOST's Docker daemon.
+      # Anything with access to this socket can trivially get root on the host - see README.
+      # - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  claude-home:
