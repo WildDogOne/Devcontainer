@@ -20,6 +20,9 @@ Edit `.env`:
 - `TELEGRAM_BOT_TOKEN` — bot token for the Telegram bot plugin. Set it here and it's available inside the
   container as an environment variable, so the plugin can use it without extra setup. Leave unset if you're not
   using that plugin.
+- `USER_UID` / `USER_GID` — shared by the `claude-code` and `pcloud` containers' non-root users (see below).
+- `PCLOUD_SYNC_DIR`, `PCLOUD_USERNAME`, `PCLOUD_PASSWORD` — only matter if you use the `pcloud` service (see
+  below).
 
 Build and start:
 
@@ -71,6 +74,42 @@ machine — it can mount the host filesystem into a new container trivially. Onl
 that will run inside this container (including whatever Claude Code itself executes), and be aware it can also
 see/stop/start any other containers already running on the server.
 
+## Syncing pCloud into the workspace
+
+The `pcloud` service builds [lneely/pcloudcc-lneely](https://github.com/lneely/pcloudcc-lneely) from source and
+runs it as a second container, so files synced from pCloud are available to Claude Code without giving the
+`claude-code` container itself any pCloud credentials or extra privileges.
+
+> **This service's Dockerfile and entrypoint were written without being able to verify the upstream project's
+> actual build system or CLI flags** (the environment that generated them had no network access). Treat it as a
+> starting point: build it, check the logs, and adjust `pcloud/Dockerfile` / `pcloud/entrypoint.sh` against
+> `lneely/pcloudcc-lneely`'s own README and `pcloudcc --help` output if it doesn't come up cleanly.
+
+Setup:
+
+1. Set `PCLOUD_USERNAME` and `PCLOUD_PASSWORD` in `.env`.
+2. Leave `USER_UID` / `USER_GID` at their defaults (both default to `1000`) unless that UID/GID is already taken
+   on the host — both containers must use the *same* values, since they both read/write
+   `PCLOUD_SYNC_DIR`/`/workspace/pcloud`, and mismatched ownership is exactly the filesystem-conflict problem this
+   is meant to avoid.
+3. `docker compose up -d --build` — this now also builds and starts the `pcloud` container.
+
+The pCloud filesystem is mounted at `/pcloud` inside the `pcloud` container, bind-mounted from
+`PCLOUD_SYNC_DIR` on the host (`./pcloud_sync` by default). That same host directory is also bind-mounted into
+`claude-code` at `/workspace/pcloud`, so Claude Code can read and write the synced files directly.
+
+**FUSE caveat:** `pcloudcc` mounts pCloud as a virtual FUSE filesystem rather than writing a plain local copy. A
+FUSE mount created *inside* a container is local to that container's mount namespace — it does not automatically
+appear in another container or on the host just because they share a bind-mounted directory. If files placed
+under `/pcloud` in the `pcloud` container don't show up under `/workspace/pcloud` in `claude-code`, you likely
+need `bind-propagation: rshared` on both containers' volume entries (Compose long syntax) and the host source
+directory mounted `shared`/`rshared` (`mount --make-rshared <PCLOUD_SYNC_DIR>`) — or, more simply, check whether
+`pcloudcc` has a plain-sync (non-FUSE) mode instead, which would sidestep this entirely.
+
+The `pcloud` container needs `/dev/fuse` and `CAP_SYS_ADMIN` to create the FUSE mount, which is why it isn't
+locked down as tightly as `claude-code` — only run it with credentials for a pCloud account you're comfortable
+this container having full access to.
+
 ## Updating Claude Code
 
 The CLI version is baked into the image at build time. To pick up a new release:
@@ -87,6 +126,9 @@ docker compose up -d
 | File                  | Purpose                                                              |
 |-----------------------|-----------------------------------------------------------------------|
 | `Dockerfile`           | Image definition: Alpine + Python + Node + dev tools + Claude Code   |
-| `docker-compose.yml`   | Service definition, volumes, bind mounts                            |
+| `docker-compose.yml`   | Service definitions for both `claude-code` and `pcloud`, volumes, bind mounts |
 | `.env.example`         | Template for local config — copy to `.env` (git-ignored)            |
 | `workspace/`           | Default bind-mount target if you don't override `WORKSPACE_DIR`     |
+| `pcloud/Dockerfile`    | Image definition for the `pcloud` sync container (builds pcloudcc-lneely from source) |
+| `pcloud/entrypoint.sh` | Runs the pcloudcc daemon and mounts pCloud at `/pcloud`              |
+| `pcloud_sync/`         | Default bind-mount target if you don't override `PCLOUD_SYNC_DIR`   |
