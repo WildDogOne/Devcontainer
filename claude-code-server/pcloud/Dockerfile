@@ -1,42 +1,46 @@
 # pCloud sync container, building lneely's fork of the pCloud console client:
 # https://github.com/lneely/pcloudcc-lneely
 #
-# ASSUMPTIONS (unverified — this build could not reach the network to confirm
-# the upstream README): the project builds via a top-level `build.sh` like the
-# upstream pcloudcom/console-client it's forked from, falling back to a plain
-# cmake build if that script isn't present. Adjust the RUN block below against
-# the actual repo instructions if the build fails.
-FROM debian:bookworm-slim AS build
+# The project builds with a plain `make` (no cmake/build.sh — see doc/BUILD.md
+# in that repo) and requires mbedtls 3.x, which Debian bookworm doesn't ship
+# (only 2.28). Debian trixie carries mbedtls 3.6, so both build and runtime
+# stages use trixie-slim instead of pulling mbedtls from source.
+FROM debian:trixie-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    cmake \
     pkg-config \
     git \
     ca-certificates \
     zlib1g-dev \
-    libssl-dev \
     libfuse3-dev \
+    libmbedtls-dev \
+    libsqlite3-dev \
+    libreadline-dev \
+    libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ARG PCLOUDCC_REPO=https://github.com/lneely/pcloudcc-lneely.git
-ARG PCLOUDCC_REF=master
+ARG PCLOUDCC_REF=main
 
 RUN git clone --recurse-submodules --depth 1 --branch "$PCLOUDCC_REF" "$PCLOUDCC_REPO" /usr/src/pcloudcc
 
 WORKDIR /usr/src/pcloudcc
-RUN if [ -x ./build.sh ]; then \
-        ./build.sh; \
-    else \
-        cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j"$(nproc)"; \
-    fi \
-    && find . -maxdepth 3 -type f -name 'pcloudcc*' -perm -u+x -exec install -Dm755 {} /usr/local/bin/pcloudcc \;
+RUN make -j"$(nproc)" && install -Dm755 pcloudcc /usr/local/bin/pcloudcc
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fuse3 \
     ca-certificates \
+    libmbedtls21 \
+    libmbedcrypto16 \
+    libmbedx509-7 \
+    libsqlite3-0 \
+    libreadline8t64 \
+    libudev1 \
+    zlib1g \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/* \
     && echo "user_allow_other" >> /etc/fuse.conf
 

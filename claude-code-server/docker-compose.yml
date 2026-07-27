@@ -2,7 +2,7 @@ services:
   claude-code:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: claude/Dockerfile
       args:
         DOCKER_GID: ${DOCKER_GID:-999}
         # Shared with the pcloud service below so both containers write files
@@ -44,9 +44,11 @@ services:
     container_name: pcloud
     restart: unless-stopped
     init: true
+    # Default (10s) races entrypoint.sh's own ~10s graceful-shutdown budget
+    # for the pcloudcc daemon; give it real headroom before Docker SIGKILLs.
+    stop_grace_period: 30s
     environment:
       PCLOUD_USERNAME: ${PCLOUD_USERNAME:-}
-      PCLOUD_PASSWORD: ${PCLOUD_PASSWORD:-}
       PCLOUD_MOUNTPOINT: /pcloud
     devices:
       # Required for the pcloudcc FUSE mount.
@@ -56,4 +58,9 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
+      # Persists ~/.pcloud/data.db (login session, saved via `-s`) across
+      # container restarts/rebuilds - see README for the one-time interactive
+      # login needed to populate it (password + 2FA code, if enabled).
+      - ${PCLOUD_HOME_DIR:-./pcloud_home}:/home/pcloud
       - ${PCLOUD_SYNC_DIR:-./pcloud_sync}:/pcloud
+      - ${WORKSPACE_DIR:-./workspace}:/workspace
