@@ -17,6 +17,9 @@ Edit `.env`:
 - `WORKSPACE_DIR` — host path (absolute, or relative to this directory) containing the project code Claude Code
   should work on. It's bind-mounted to `/workspace` inside the container. Defaults to `./workspace`.
 - `DOCKER_GID` — only matters if you enable Docker socket access (see below).
+- `TELEGRAM_BOT_TOKEN` — bot token for the Telegram bot plugin. Set it here and it's available inside the
+  container as an environment variable, so the plugin can use it without extra setup. Leave unset if you're not
+  using that plugin.
 
 Build and start:
 

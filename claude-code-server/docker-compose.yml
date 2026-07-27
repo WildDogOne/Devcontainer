@@ -11,6 +11,9 @@ services:
     tty: true
     stdin_open: true
     working_dir: /workspace
+    environment:
+      # Bot token for the Telegram bot plugin - leave unset in .env if you're not using it.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       # Persists `claude login` and all other dotfiles/state across container restarts/rebuilds.
       - ./claude_home:/home/claude
