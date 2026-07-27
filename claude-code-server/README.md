@@ -36,6 +36,7 @@ Attach an interactive shell:
 
 ```bash
 docker compose exec claude-code zsh
+claude --channels plugin:telegram@claude-plugins-official
 ```
 
 From there, run `claude` as usual. On first run it'll print a login URL — open it in any browser (doesn't need to
