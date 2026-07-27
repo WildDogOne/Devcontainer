@@ -5,6 +5,11 @@ services:
       dockerfile: Dockerfile
       args:
         DOCKER_GID: ${DOCKER_GID:-999}
+        # Shared with the pcloud service below so both containers write files
+        # under the same UID/GID and don't fight over ownership on anything
+        # they both touch (e.g. PCLOUD_SYNC_DIR).
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
     container_name: claude-code
     restart: unless-stopped
     init: true
@@ -19,6 +24,36 @@ services:
       - ./claude_home:/home/claude
       # Project code Claude Code will actually work on.
       - ${WORKSPACE_DIR:-./workspace}:/workspace
+      # Same host directory the pcloud service syncs into, so Claude Code can
+      # read/write the synced files directly. See README for the FUSE
+      # mount-propagation caveat if pcloudcc mounts a virtual filesystem
+      # rather than writing plain files to disk.
+      - ${PCLOUD_SYNC_DIR:-./pcloud_sync}:/workspace/pcloud
       # Lets `docker` commands inside the container control the HOST's Docker daemon.
       # Anything with access to this socket can trivially get root on the host - see README.
       # - /var/run/docker.sock:/var/run/docker.sock
+
+  pcloud:
+    build:
+      context: ./pcloud
+      dockerfile: Dockerfile
+      args:
+        # Must match claude-code's USER_UID/USER_GID above - see README.
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    container_name: pcloud
+    restart: unless-stopped
+    init: true
+    environment:
+      PCLOUD_USERNAME: ${PCLOUD_USERNAME:-}
+      PCLOUD_PASSWORD: ${PCLOUD_PASSWORD:-}
+      PCLOUD_MOUNTPOINT: /pcloud
+    devices:
+      # Required for the pcloudcc FUSE mount.
+      - /dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ${PCLOUD_SYNC_DIR:-./pcloud_sync}:/pcloud
