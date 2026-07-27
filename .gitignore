@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.claude
+claude-code-server/workspace
+claude-code-server/claude_home
