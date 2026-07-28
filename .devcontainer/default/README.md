@@ -8,7 +8,7 @@ a separate, always-on Docker Compose service meant for running Claude Code unatt
 ## What's in the container
 
 Alpine-based image (`python:3.12-alpine`) with Python, Node.js, git, GitHub CLI (`gh`), ripgrep, jq, fzf, zsh,
-Docker CLI + Compose, and the `claude` CLI (`npm install -g @anthropic-ai/claude-code`), plus a non-root `vscode`
+Docker CLI + Compose, and the `claude` CLI (`npm install -g @anthropic-ai/claude-code`), plus a non-root `dev`
 user (UID/GID 1000) so files created in the container stay writable on the host.
 
 The official devcontainer "features" (`node`, `github-cli`, `docker-in-docker`, `common-utils`) all assume a

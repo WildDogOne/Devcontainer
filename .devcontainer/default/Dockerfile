@@ -23,9 +23,9 @@ RUN apk add --no-cache \
     # fails to run under musl without this compatibility shim.
     gcompat
 
-# Create a non-root "vscode" user (Alpine base images don't ship one), matching
+# Create a non-root "dev" user (Alpine base images don't ship one), matching
 # UID/GID 1000 so files created in the container stay writable on the host.
-ARG USERNAME=vscode
+ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 RUN addgroup -g $USER_GID $USERNAME \
