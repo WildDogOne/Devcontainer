@@ -19,6 +19,14 @@
     "--network=host"
   ],
   "remoteUser": "vscode",
+  // On native Linux, /run/host-services/ssh-auth.sock (see mounts below) doesn't exist -
+  // that fixed path is a Docker Desktop (Mac) thing. `--mount type=bind` refuses to create
+  // a missing bind source (unlike -v), so container creation 400s without this. We drop a
+  // systemd-tmpfiles rule so the stub file survives reboots (/run is tmpfs) and self-heals
+  // with no further manual steps; only the very first run on a given machine needs sudo
+  // (interactively - if this runs headless before you've entered a password once, do the
+  // one-time setup yourself, see README.md "SSH public-key auth for git"). No-ops on Mac.
+  "initializeCommand": "if [ \"$(uname)\" != 'Darwin' ]; then [ -e /run/host-services/ssh-auth.sock ] || { sudo mkdir -p /run/host-services && sudo touch /run/host-services/ssh-auth.sock; }; [ -f /etc/tmpfiles.d/devcontainer-ssh-stub.conf ] || echo 'f /run/host-services/ssh-auth.sock 0666 root root -' | sudo tee /etc/tmpfiles.d/devcontainer-ssh-stub.conf >/dev/null; fi",
   // Reuse your host's Claude Code login/config instead of logging in again inside the container.
   // If these paths don't exist on the host yet, run `claude` once locally first (or just let
   // Docker create empty mounts and log in fresh inside the container).
@@ -33,8 +41,9 @@
     // Mac: Docker Desktop's own always-on forwarded-agent socket, fixed path.
     "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
     // Linux: direct bind of the launching shell's own SSH_AUTH_SOCK. Falls
-    // back to a harmless nonexistent path (becomes an empty dir) if unset.
-    "source=${localEnv:SSH_AUTH_SOCK:/tmp/no-host-ssh-agent},target=/tmp/host-ssh-agent.sock,type=bind"
+    // back to /dev/null (always exists, so --mount type=bind never 400s on
+    // it) if unset - ssh-agent-setup.sh's -S test then just skips it.
+    "source=${localEnv:SSH_AUTH_SOCK:/dev/null},target=/tmp/host-ssh-agent.sock,type=bind"
   ],
   // Route proxy-aware tooling (claude, git, npm, pip, gh, curl, apk) through the
   // loopback-only squid allowlist in postStartCommand instead of the wide-open

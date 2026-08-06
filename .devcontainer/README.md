@@ -1,9 +1,9 @@
 # Dev Container (PyCharm)
 
 This is a [Dev Container](https://containers.dev/) definition for working on this repo *inside* PyCharm, with
-Claude Code and its usual dependencies preinstalled. It's independent of `claude-code-server/`: that directory is
+Claude Code and its usual dependencies preinstalled. It's independent of `../claude-code-server`: that directory is
 a separate, always-on Docker Compose service meant for running Claude Code unattended on a server (see
-`claude-code-server/README.md`); this `.devcontainer/` is for interactive, IDE-driven development.
+`../claude-code-server/README.md`); this `` is for interactive, IDE-driven development.
 
 ## What's in the container
 
@@ -47,7 +47,7 @@ integration). With Docker running locally:
 
 1. Build the image first — see "Building the image" below. PyCharm does not build it for you.
 2. `Settings/Preferences | Build, Execution, Deployment | Dev Containers` (or right-click
-   `.devcontainer/devcontainer.json` in the project tree) and choose to create/attach a dev container from this
+   `devcontainer.json` in the project tree) and choose to create/attach a dev container from this
    file.
 3. PyCharm starts a container from the already-built `claude-code-devcontainer:latest` image and connects — the
    backend IDE runs inside the container while you keep the regular PyCharm UI.
@@ -138,13 +138,32 @@ real and points `SSH_AUTH_SOCK` at it:
   `$SSH_AUTH_SOCK` directly, which only works if that shell actually has a running `ssh-agent`
   (`ssh-add -l` should list a key) at the time PyCharm/`docker` starts the container.
 
-Only one of these sockets will be real on a given host; the other mount is a harmless empty directory
-(Docker auto-creates missing bind-mount sources). `ssh-agent-setup.sh` runs on every container start,
-picks whichever path is an actual socket, and writes `export SSH_AUTH_SOCK=...` to
+Only one of these sockets will be real on a given host; the other mount just needs *something* to
+bind. Unlike `-v`, `--mount type=bind` (what `devcontainer.json`'s `mounts` array compiles to) refuses
+to create a missing bind source at all — it 400s the container creation instead. The Linux-only mount
+(`${localEnv:SSH_AUTH_SOCK:/dev/null}`) falls back to `/dev/null`, which always exists, so it never
+hits this; an earlier version fell back to a nonexistent `/tmp/no-host-ssh-agent` path instead and hit
+the exact same 400 whenever `$SSH_AUTH_SOCK` was unset in whatever launched `docker`/PyCharm. Separately,
+on native Linux the fixed Mac path `/run/host-services/ssh-auth.sock` genuinely doesn't exist.
+`initializeCommand` works around this: on non-Darwin hosts it stubs that path with an empty file (once
+per boot — `/run` is tmpfs) and drops a `systemd-tmpfiles` rule (`/etc/tmpfiles.d/devcontainer-ssh-stub.conf`)
+so it's automatically recreated on every future boot without needing sudo again. `ssh-agent-setup.sh`
+then runs on every container start, picks whichever of the two mounted paths is an *actual* socket
+(the stub fails the `-S` test and is skipped), and writes `export SSH_AUTH_SOCK=...` to
 `/etc/zsh/zshenv.local` — sourced by every zsh invocation via the include hook added in `Dockerfile`
 (plain `/etc/profile.d` isn't read by non-login zsh shells, which is what PyCharm's integrated terminal
 opens). It also seeds `~/.ssh/known_hosts` for GitHub/GitLab/Bitbucket via `ssh-keyscan`, so the first
 `git` SSH connection doesn't hang on an interactive host-key prompt.
+
+The very first time `initializeCommand` runs on a fresh Linux machine (before the tmpfiles rule
+exists), it needs an interactive `sudo` prompt. If it's invoked headlessly (e.g. PyCharm's non-tty
+builder) before that's ever succeeded once, do the one-time setup yourself first:
+
+```sh
+sudo mkdir -p /run/host-services
+sudo touch /run/host-services/ssh-auth.sock
+echo 'f /run/host-services/ssh-auth.sock 0666 root root -' | sudo tee /etc/tmpfiles.d/devcontainer-ssh-stub.conf
+```
 
 If `git@github.com` still asks for a password/key after rebuilding, check `ssh-add -l` on whichever
 host actually ran `docker` for this container — an empty agent is the most common cause.
