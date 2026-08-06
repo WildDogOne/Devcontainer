@@ -1,6 +1,8 @@
 {
   "name": "Claude Code Dev Container",
-
+  "settings": {
+    "python.terminal.activateEnvInCurrentTerminal": true
+  },
   // Built out-of-band via build.sh (`docker build --network=host ...`), not by PyCharm:
   // this host's Docker bridge network can't reach DNS/internet at all (corporate firewall
   // blocks it), so the build needs --network=host - and PyCharm's devcontainer builder has
@@ -9,14 +11,14 @@
   // change to Dockerfile/squid.conf/allowed-domains.txt, then reopen/rebuild in PyCharm.
   // See README.md "Building the image" for details.
   "image": "claude-code-devcontainer:latest",
-
   // --privileged: needed for the manual Docker-in-Docker setup (see postStartCommand).
   // --network=host: same DNS/egress restriction as above applies to the running
   // container - without this, claude/git/npm/pip/gh all lose network access.
-  "runArgs": ["--privileged", "--network=host"],
-
+  "runArgs": [
+    "--privileged",
+    "--network=host"
+  ],
   "remoteUser": "vscode",
-
   // Reuse your host's Claude Code login/config instead of logging in again inside the container.
   // If these paths don't exist on the host yet, run `claude` once locally first (or just let
   // Docker create empty mounts and log in fresh inside the container).
@@ -24,7 +26,6 @@
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
   ],
-
   // Route proxy-aware tooling (claude, git, npm, pip, gh, curl, apk) through the
   // loopback-only squid allowlist in postStartCommand instead of the wide-open
   // host network. See .devcontainer/README.md for what this does and doesn't cover.
@@ -33,7 +34,6 @@
     "HTTPS_PROXY": "http://127.0.0.1:3128",
     "NO_PROXY": "localhost,127.0.0.1"
   },
-
   // Start the egress allowlist proxy before dockerd, so dockerd's own image pulls
   // go through it too (sudo drops containerEnv, hence the explicit proxy vars here).
   "postStartCommand": "sudo sh -c 'nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &' ; sleep 1 ; sudo sh -c 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 NO_PROXY=localhost,127.0.0.1 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &' ; sleep 1"
