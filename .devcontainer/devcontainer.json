@@ -24,7 +24,17 @@
   // Docker create empty mounts and log in fresh inside the container).
   "mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached",
+    // Forward the host's ssh-agent for git SSH auth (no private keys copied
+    // into the container). This project runs on both a Mac (Docker Desktop)
+    // and an Arch Linux box, and the right agent socket depends on which one
+    // actually runs `docker` at container-start time, so both are bound and
+    // ssh-agent-setup.sh (via postStartCommand) picks whichever is real.
+    // Mac: Docker Desktop's own always-on forwarded-agent socket, fixed path.
+    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
+    // Linux: direct bind of the launching shell's own SSH_AUTH_SOCK. Falls
+    // back to a harmless nonexistent path (becomes an empty dir) if unset.
+    "source=${localEnv:SSH_AUTH_SOCK:/tmp/no-host-ssh-agent},target=/tmp/host-ssh-agent.sock,type=bind"
   ],
   // Route proxy-aware tooling (claude, git, npm, pip, gh, curl, apk) through the
   // loopback-only squid allowlist in postStartCommand instead of the wide-open
@@ -36,5 +46,7 @@
   },
   // Start the egress allowlist proxy before dockerd, so dockerd's own image pulls
   // go through it too (sudo drops containerEnv, hence the explicit proxy vars here).
-  "postStartCommand": "sudo sh -c 'nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &' ; sleep 1 ; sudo sh -c 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 NO_PROXY=localhost,127.0.0.1 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &' ; sleep 1"
+  // ssh-agent-setup.sh detects which forwarded agent socket (if any) the host
+  // actually mounted and seeds known_hosts - see ssh-agent-setup.sh for why.
+  "postStartCommand": "sudo sh -c 'nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &' ; sleep 1 ; sudo sh -c 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 NO_PROXY=localhost,127.0.0.1 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &' ; sleep 1 ; /usr/local/bin/ssh-agent-setup.sh"
 }

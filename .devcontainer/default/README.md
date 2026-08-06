@@ -124,6 +124,31 @@ boundary. Because the rules live in an opt-in proxy rather than the kernel firew
 has the same unrestricted host-network access as before. If you hit a blocked domain (e.g. Claude's `WebFetch`
 tool erroring on an arbitrary site, or a new package registry), add it to `allowed-domains.txt` and rebuild.
 
+## SSH public-key auth for git
+
+`git@github.com`-style SSH remotes need a private key, but this container never gets one copied into
+it — instead `devcontainer.json`'s `mounts` forward the *host's* running `ssh-agent`, and
+`ssh-agent-setup.sh` (invoked from `postStartCommand`) figures out which of two possible sockets is
+real and points `SSH_AUTH_SOCK` at it:
+
+- **macOS (Docker Desktop):** Docker Desktop always exposes the host's ssh-agent at the fixed path
+  `/run/host-services/ssh-auth.sock` inside any container that bind-mounts it, regardless of which app
+  (PyCharm, a terminal, ...) launched the container — no reliance on that app's own environment.
+- **Linux:** there's no such fixed path, so `devcontainer.json` bind-mounts the *launching shell's own*
+  `$SSH_AUTH_SOCK` directly, which only works if that shell actually has a running `ssh-agent`
+  (`ssh-add -l` should list a key) at the time PyCharm/`docker` starts the container.
+
+Only one of these sockets will be real on a given host; the other mount is a harmless empty directory
+(Docker auto-creates missing bind-mount sources). `ssh-agent-setup.sh` runs on every container start,
+picks whichever path is an actual socket, and writes `export SSH_AUTH_SOCK=...` to
+`/etc/zsh/zshenv.local` — sourced by every zsh invocation via the include hook added in `Dockerfile`
+(plain `/etc/profile.d` isn't read by non-login zsh shells, which is what PyCharm's integrated terminal
+opens). It also seeds `~/.ssh/known_hosts` for GitHub/GitLab/Bitbucket via `ssh-keyscan`, so the first
+`git` SSH connection doesn't hang on an interactive host-key prompt.
+
+If `git@github.com` still asks for a password/key after rebuilding, check `ssh-add -l` on whichever
+host actually ran `docker` for this container — an empty agent is the most common cause.
+
 ## Docker-in-Docker
 
 There's no Docker socket bind-mounted from the host and no `docker-in-docker` devcontainer feature in use.

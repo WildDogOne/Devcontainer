@@ -46,6 +46,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/squid/allowed-domains.txt
 
+# Sourced by every zsh invocation (login or not, interactive or not), unlike
+# /etc/profile.d which plain zsh doesn't read. postStartCommand writes/removes
+# zshenv.local each start via ssh-agent-setup.sh to export SSH_AUTH_SOCK once
+# it knows which forwarded agent socket (if any) the host actually mounted.
+RUN mkdir -p /etc/zsh && echo '[ -f /etc/zsh/zshenv.local ] && . /etc/zsh/zshenv.local' >> /etc/zsh/zshenv
+
+COPY ssh-agent-setup.sh /usr/local/bin/ssh-agent-setup.sh
+RUN chmod +x /usr/local/bin/ssh-agent-setup.sh
+
 # Create a non-root "vscode" user matching UID/GID 1000 so files created in the
 # container stay writable on the host. docker.io's postinst already creates the
 # "docker" group. Ubuntu's base image already ships a default "ubuntu" user/group
