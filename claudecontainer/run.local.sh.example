@@ -1,0 +1,13 @@
+# Optional, per-machine mounts for run.sh, beyond $PWD and the Claude Code login.
+# Copy this file to run.local.sh (gitignored - never committed, since the paths here
+# are personal to whatever host you're running on) and edit EXTRA_MOUNTS. run.sh
+# sources it automatically if present and just skips it if not, so this is safe to
+# leave unconfigured.
+#
+# Each entry is one `docker run -v` argument, host:container[:ro]. Same path on both
+# sides keeps things simple but isn't required - unlike $PWD, these don't need to line
+# up with anything the container already expects.
+
+EXTRA_MOUNTS=(
+  # "$HOME/Obsidian:$HOME/Obsidian"
+)

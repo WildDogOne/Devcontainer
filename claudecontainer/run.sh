@@ -23,4 +23,17 @@ if [[ -n "${SSH_AUTH_SOCK:-}" && -S "${SSH_AUTH_SOCK}" ]]; then
   docker_args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
 fi
 
+# Personal, per-machine mounts beyond $PWD - see run.local.sh.example. Gitignored and
+# entirely optional: nothing breaks if it's missing, EXTRA_MOUNTS just stays empty.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXTRA_MOUNTS=()
+if [[ -f "$script_dir/run.local.sh" ]]; then
+  . "$script_dir/run.local.sh"
+fi
+if [[ ${#EXTRA_MOUNTS[@]} -gt 0 ]]; then
+  for mount in "${EXTRA_MOUNTS[@]}"; do
+    docker_args+=(-v "$mount")
+  done
+fi
+
 exec docker run "${docker_args[@]}" claudecontainer:latest "$@"
