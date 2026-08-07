@@ -77,6 +77,18 @@ e.g. `docker compose` inside a project) needs `--privileged`. Outbound traffic f
 container is still restricted to `allowed-domains.txt` via the loopback-only squid
 proxy started in `entrypoint.sh` - extend that file when a workflow needs a new host.
 
+This relies on tools inside the container actually using that proxy - there's no
+network-level enforcement (an iptables redirect was considered, but `--network host`
+means the container shares the host's real network namespace, so a redirect rule can't
+be safely scoped to just the container's own traffic without risking the host's own
+sessions too). Instead `entrypoint.sh` sets both `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`
+and their lowercase mirrors (curl, git, wget, and Go's `net/http` deliberately only
+honor lowercase `http_proxy` for plain `http://` requests - the httpoxy-CVE mitigation),
+plus explicit `apt` (`/etc/apt/apt.conf.d/95proxy`) and `git` (`--system http.proxy`)
+config, since both are inconsistent about reading proxy env vars on their own. A tool
+that ignores all of that can still reach the network directly - the allowlist is a
+guard against accidents, not a hard sandbox boundary.
+
 ## Python 3.14 and `.venv`
 
 Python 3.14 is installed via the deadsnakes PPA and made the default `python3`/
