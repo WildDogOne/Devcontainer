@@ -20,7 +20,9 @@ if [ "$#" -eq 0 ]; then
   set -- zsh -lc claude
 fi
 
-# `-l` gives dev a real login session (HOME, PATH, PAM's /etc/environment) before the
-# -c script's `cd "$0"` overrides the cwd back to whatever run.sh mounted - login's own
-# `cd ~dev` would otherwise land the command in dev's home instead of the project dir.
-exec su -l -s /bin/sh -c 'cd "$0" || exit 1; exec "$@"' dev "$PWD" "$@"
+# sudo (not `su -l`): su's login-session setup cd's to the target user's home as part
+# of establishing the session, and that happens before a `-c` script gets a chance to
+# `cd` back - landed every session in /home/dev regardless of run.sh's mount. sudo
+# never chdir's on its own, so the cwd docker run -w set (run.sh's project mount)
+# just passes through untouched; -H still sets HOME=/home/dev for dev's own configs.
+exec sudo -u dev -H --preserve-env=HTTP_PROXY,HTTPS_PROXY,NO_PROXY -- "$@"

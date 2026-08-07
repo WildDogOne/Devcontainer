@@ -75,9 +75,9 @@ unset _venv_dir
 EOF
 RUN echo '[ -f /etc/zsh/zshenv.venv ] && . /etc/zsh/zshenv.venv' >> /etc/zsh/zshenv
 
-# PAM's pam_env module applies this to every login session - the reliable way to get
-# squid's proxy on PATH for the entrypoint's `su -l dev` session, since a plain env var
-# export in entrypoint.sh wouldn't survive that privilege drop.
+# Belt-and-suspenders alongside entrypoint.sh's explicit --preserve-env: covers any
+# other login/PAM-aware program that reads /etc/environment directly (sudo's own PAM
+# session module included, depending on /etc/pam.d/sudo config).
 RUN cat <<'EOF' >> /etc/environment
 HTTP_PROXY=http://127.0.0.1:3128
 HTTPS_PROXY=http://127.0.0.1:3128
@@ -105,5 +105,5 @@ RUN if getent passwd ubuntu >/dev/null; then userdel -r ubuntu; fi \
 RUN npm install -g @anthropic-ai/claude-code
 
 # Stays root: entrypoint.sh needs it to start dockerd/squid, then drops to dev itself
-# (via `su -l`) before running the actual command.
+# (via `sudo -u dev`) before running the actual command.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
