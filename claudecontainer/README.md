@@ -1,0 +1,66 @@
+# claudecontainer
+
+A restricted sandbox for running Claude Code (or any other tool in the image). Built
+once, then launched fresh per session via `run.sh` - each run is a disposable
+container that only ever sees the directory you launched it from, plus your Claude
+Code login. No persistent container, no inbound network listener, no whole-home mount.
+
+## Quick start
+
+```sh
+./build.sh              # docker build -t claudecontainer:latest .
+cd ~/Documents/git/some-project
+~/Documents/git/Devcontainer/claudecontainer/run.sh   # drops you into `claude`
+```
+
+Run `./build.sh` again after any change to `Dockerfile`, `squid.conf`, or
+`allowed-domains.txt`.
+
+## What gets mounted, and why only that
+
+`run.sh` mounts exactly three things into the container, all read-write except where
+noted:
+
+- `$PWD` → same path inside the container (so absolute paths, git, and anything
+  project-relative behave the same as running directly on the host). This is the
+  *only* part of your filesystem the container can see - not `$HOME`, not anything
+  above or beside the current directory.
+- `~/.claude` and `~/.claude.json` → reuses your host's Claude Code login instead of
+  logging in again inside the container. If these don't exist yet on the host, `run.sh`
+  still works - Docker creates empty mounts and you log in fresh inside.
+- Your host's `$SSH_AUTH_SOCK` (if set) → outbound git-over-SSH auth via agent
+  forwarding. No private keys are ever copied into the image.
+
+Earlier versions of this setup used `docker compose` with a static volume mount
+defaulting to your entire `$HOME`, plus a persistent SSH listener for JetBrains
+Gateway. Both are gone: the whole-home mount defeated the point of a "restricted"
+container, and a fresh `docker run` per session is a better fit than a long-lived
+container with a fixed mount anyway - you can't add mounts to a container after it's
+already up, so anything meant to be scoped per-session has to be decided at `docker
+run` time, not baked into a compose file.
+
+## Networking, `--privileged`, and the egress allowlist
+
+Same reasoning as `../.devcontainer/README.md`'s "`--network=host` and `--privileged`"
+and "Egress allowlist (squid)" sections: this host's Docker bridge network can't reach
+the internet at all, and Docker-in-Docker (for anything run via the inner `dockerd`,
+e.g. `docker compose` inside a project) needs `--privileged`. Outbound traffic from the
+container is still restricted to `allowed-domains.txt` via the loopback-only squid
+proxy started in `entrypoint.sh` - extend that file when a workflow needs a new host.
+
+## Python 3.14 and `.venv`
+
+Python 3.14 is installed via the deadsnakes PPA and made the default `python3`/
+`python` (see Dockerfile). Every zsh session walks up from its current directory
+looking for a `.venv/bin/activate` and sources it automatically
+(`/etc/zsh/zshenv.venv`, wired in via `/etc/zsh/zshenv`). Nothing here creates a
+`.venv` for you - create one yourself (`python3.14 -m venv .venv`) if a project doesn't
+already have one.
+
+## No inbound SSH / no JetBrains Gateway
+
+This container no longer runs sshd - it has no listening port and nothing reaches it
+from outside `docker run`/`docker exec`. If you need JetBrains Gateway-style remote
+development again, that needs a separate, persistent container setup (a stable target
+to connect to isn't compatible with "fresh container scoped to the current directory
+per session").
