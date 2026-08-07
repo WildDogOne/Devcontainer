@@ -13,8 +13,9 @@ cd ~/Documents/git/some-project
 ~/Documents/git/Devcontainer/claudecontainer/run.sh   # drops you into `claude`
 ```
 
-Run `./build.sh` again after any change to `Dockerfile`, `squid.conf`, or
-`allowed-domains.txt`.
+Run `./build.sh` again after any change to `Dockerfile`, `entrypoint.sh`, `squid.conf`,
+or `allowed-domains.txt` - all four are baked into the image at build time (`entrypoint.sh`
+via `COPY`), so a stale image keeps running the old version until rebuilt.
 
 Extra arguments starting with `-` are forwarded to `claude` itself, e.g.
 `run.sh --continue` resumes your last session in the current directory. Anything else
@@ -47,8 +48,8 @@ Then reload the config (`source ~/.zshrc`, etc., or open a new terminal) and run
 
 ## What gets mounted, and why only that
 
-`run.sh` mounts exactly three things into the container, all read-write except where
-noted:
+By default, `run.sh` mounts exactly three things into the container, all read-write
+except where noted:
 
 - `$PWD` → same path inside the container (so absolute paths, git, and anything
   project-relative behave the same as running directly on the host). This is the
@@ -59,6 +60,13 @@ noted:
   still works - Docker creates empty mounts and you log in fresh inside.
 - Your host's `$SSH_AUTH_SOCK` (if set) → outbound git-over-SSH auth via agent
   forwarding. No private keys are ever copied into the image.
+
+`run.sh` also sources a `run.local.sh` next to itself, if present, for optional
+per-machine extra mounts beyond those three (see `run.local.sh.example`). It's
+gitignored - personal host paths don't belong in a shared repo - and entirely
+opt-in: nothing breaks if it's missing. Every extra mount here widens the sandbox
+past "just `$PWD`", so treat additions deliberately, not as a default place to bolt
+things on.
 
 Earlier versions of this setup used `docker compose` with a static volume mount
 defaulting to your entire `$HOME`, plus a persistent SSH listener for JetBrains
