@@ -26,6 +26,9 @@ cli.github.com
 .pypi.org
 .pythonhosted.org
 
+# uv/uvx installer + self-update (mcp-atlassian is run via uvx, see Dockerfile)
+.astral.sh
+
 # Ubuntu package mirrors
 archive.ubuntu.com
 security.ubuntu.com

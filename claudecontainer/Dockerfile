@@ -107,6 +107,14 @@ RUN if getent passwd ubuntu >/dev/null; then userdel -r ubuntu; fi \
 
 RUN npm install -g @anthropic-ai/claude-code
 
+# uv/uvx: the "atlassian" MCP server (~/.claude.json, uvx mcp-atlassian) execs uvx
+# directly, so it has to be a real binary on PATH rather than something uvx's own
+# on-demand package fetch could paper over. Static binary straight to /usr/local/bin
+# (already on PATH for both root and dev, see USERNAME block above) rather than the
+# installer's default ~/.local/bin, since root's $HOME isn't dev's $HOME and this
+# needs to work for both.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
 # Stays root: entrypoint.sh needs it to start dockerd/squid, then drops to dev itself
 # (via `sudo -u dev`) before running the actual command.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
