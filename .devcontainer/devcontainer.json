@@ -57,5 +57,12 @@
   // go through it too (sudo drops containerEnv, hence the explicit proxy vars here).
   // ssh-agent-setup.sh detects which forwarded agent socket (if any) the host
   // actually mounted and seeds known_hosts - see ssh-agent-setup.sh for why.
-  "postStartCommand": "sudo sh -c 'nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &' ; sleep 1 ; sudo sh -c 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 NO_PROXY=localhost,127.0.0.1 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &' ; sleep 1 ; /usr/local/bin/ssh-agent-setup.sh"
+  // venv-setup.sh wires up .venv auto-activation for the terminal: devcontainer.json's
+  // "remoteEnv" (the spec-correct way to do this) is a confirmed no-op under PyCharm's
+  // Dev Containers support (doesn't reach the container's env at all - checked via
+  // `docker inspect`), and PyCharm's own devcontainer.json interpreter customization
+  // (customizations.jetbrains) is documented as "not yet implemented". postStartCommand
+  // is the one lifecycle hook PyCharm reliably runs (proven by the two commands already
+  // here), so that's what venv-setup.sh hooks into instead.
+  "postStartCommand": "sudo sh -c 'nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &' ; sleep 1 ; sudo sh -c 'HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128 NO_PROXY=localhost,127.0.0.1 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &' ; sleep 1 ; /usr/local/bin/ssh-agent-setup.sh ; /usr/local/bin/venv-setup.sh"
 }

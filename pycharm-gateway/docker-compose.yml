@@ -1,0 +1,39 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # This host's Docker bridge network can't reach DNS/the internet at all (corporate
+      # firewall) - same reasoning as ../.devcontainer/README.md's "--network=host and
+      # --privileged" section, which is also why the running container below needs it.
+      network: host
+    image: pycharm-gateway-devcontainer:latest
+    container_name: pycharm-gateway-devcontainer
+    restart: unless-stopped
+    # Real init (tini) as PID 1, so entrypoint.sh's `exec sshd` and dockerd's own forked/
+    # orphaned children still get reaped properly instead of accumulating as zombies.
+    init: true
+    privileged: true
+    network_mode: host
+    volumes:
+      # Reuses your host's Claude Code login/config instead of logging in again inside
+      # the container. If these don't exist on the host yet, run `claude` once locally
+      # first (or let Docker create empty mounts and log in fresh in here).
+      - ${HOME}/.claude:/home/dev/.claude
+      - ${HOME}/.claude.json:/home/dev/.claude.json
+      # Project code you'll actually open through Gateway. Mounted at the *same* path
+      # inside as on the host, so opening a project by its familiar absolute path just
+      # works - defaults to your whole home directory since this image is reused across
+      # projects (see ../.devcontainer/README.md); narrow this to something smaller
+      # (e.g. just ~/Documents/git) in .env if you'd rather not share all of $HOME.
+      - ${PROJECTS_DIR:-${HOME}}:${PROJECTS_DIR:-${HOME}}
+      # Public key(s) trusted for the *inbound* Gateway SSH connection - entrypoint.sh
+      # copies these into dev's authorized_keys. Point this at your own pubkey(s) in
+      # .env if it's not the default.
+      - ${GATEWAY_AUTHORIZED_KEYS_DIR:-${HOME}/.ssh}:/run/host-authorized-keys:ro
+      # Forwards the host's ssh-agent for *outbound* git SSH auth (no private keys
+      # copied in) - unrelated to the Gateway connection above. Two candidate sockets
+      # since this runs on both a Mac (Docker Desktop) and Linux boxes - see
+      # ssh-agent-setup.sh for which one actually gets used on a given host.
+      - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+      - ${SSH_AUTH_SOCK:-/dev/null}:/tmp/host-ssh-agent.sock

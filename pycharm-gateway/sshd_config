@@ -1,0 +1,21 @@
+# Minimal sshd config for JetBrains Gateway access into this container. Key-only auth
+# for the dev user; docker-compose.yml runs this with network_mode: host (same
+# corporate-firewall reasoning as ../.devcontainer/README.md's "--network=host and
+# --privileged" section), so this listens directly on the host interface - Port 2222
+# rather than 22 to avoid colliding with a real sshd already running on the host.
+Port 2222
+ListenAddress 0.0.0.0
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AllowUsers dev
+
+X11Forwarding no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
+UsePAM yes

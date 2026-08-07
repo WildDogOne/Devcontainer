@@ -1,0 +1,36 @@
+# Squid dstdomain ACL: one entry per line. A leading "." matches the domain
+# itself and every subdomain; without it, only that exact host matches.
+# Extend this file when a workflow needs a new host - see ./README.md.
+
+# Anthropic / Claude Code (API, auth, telemetry, docs, plugin downloads)
+.anthropic.com
+.claude.ai
+.claude.com
+.statsig.com
+.sentry.io
+.datadoghq.com
+storage.googleapis.com
+
+# npm registry
+.npmjs.org
+
+# Node.js apt repo (NodeSource, for the nodejs package itself)
+deb.nodesource.com
+
+# GitHub (git, gh CLI, raw/object downloads, gh's apt repo)
+.github.com
+.githubusercontent.com
+cli.github.com
+
+# PyPI
+.pypi.org
+.pythonhosted.org
+
+# Ubuntu package mirrors
+archive.ubuntu.com
+security.ubuntu.com
+ports.ubuntu.com
+
+# Docker Hub (for the inner dockerd's image pulls)
+.docker.io
+.docker.com

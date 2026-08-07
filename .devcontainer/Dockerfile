@@ -46,6 +46,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/squid/allowed-domains.txt
 
+# Ubuntu 24.04's own python3 is 3.12; 3.14 comes from the deadsnakes PPA (needs
+# software-properties-common's add-apt-repository - there's no plain apt source
+# line that's stable across releases). update-alternatives then repoints the
+# system /usr/bin/python3 and adds /usr/bin/python at 3.14, matching how the
+# host outside this container is already set up, so a .venv created on the
+# host and bind-mounted in (its bin/python symlinks resolve through
+# /usr/bin/python3) keeps working unmodified inside the container too.
+# Trade-off: apt's own python3-apt module stays compiled against 3.12, so
+# python3-dependent apt tooling (add-apt-repository, unattended-upgrade) would
+# break if invoked again after this point - not used anywhere else in this
+# image or its runtime scripts, so left as-is rather than avoided.
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.14 \
+    python3.14-venv \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.14 1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Sourced by every zsh invocation (login or not, interactive or not), unlike
 # /etc/profile.d which plain zsh doesn't read. postStartCommand writes/removes
 # zshenv.local each start via ssh-agent-setup.sh to export SSH_AUTH_SOCK once
