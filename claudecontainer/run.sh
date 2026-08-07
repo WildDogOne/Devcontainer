@@ -3,8 +3,9 @@
 # this from whatever project you want Claude Code (or anything else in the image) to
 # have access to. Only $PWD and your Claude Code login get mounted in; nothing else on
 # the host is reachable from inside, and the container is removed on exit (--rm) so
-# there's no persistent state or mount to go stale. Extra arguments override the
-# default `claude` command, e.g. `run.sh bash` for a plain shell.
+# there's no persistent state or mount to go stale. Extra arguments starting with `-`
+# are forwarded to `claude` itself (e.g. `run.sh --continue`); anything else overrides
+# the default `claude` command entirely (e.g. `run.sh bash` for a plain shell).
 set -euo pipefail
 
 docker_args=(

@@ -16,6 +16,35 @@ cd ~/Documents/git/some-project
 Run `./build.sh` again after any change to `Dockerfile`, `squid.conf`, or
 `allowed-domains.txt`.
 
+Extra arguments starting with `-` are forwarded to `claude` itself, e.g.
+`run.sh --continue` resumes your last session in the current directory. Anything else
+overrides the default `claude` command entirely, e.g. `run.sh bash` for a plain shell.
+
+## Shell alias
+
+`run.sh` resolves its own location rather than relying on cwd, so an alias to its
+absolute path works from any project directory - the container still only ever sees
+wherever you ran `claudecli` from, not this repo. Add one of these to your shell's
+config on the host (not inside the container):
+
+**bash** (`~/.bashrc`):
+```sh
+alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+```
+
+**zsh** (`~/.zshrc`):
+```sh
+alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+```
+
+**fish** (`~/.config/fish/config.fish`):
+```fish
+alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+```
+
+Then reload the config (`source ~/.zshrc`, etc., or open a new terminal) and run
+`claudecli` from any project.
+
 ## What gets mounted, and why only that
 
 `run.sh` mounts exactly three things into the container, all read-write except where

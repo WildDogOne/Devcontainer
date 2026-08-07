@@ -6,7 +6,7 @@
 set -eu
 
 # Egress allowlist proxy first, so dockerd's own image pulls go through it too. /etc/
-# environment (see Dockerfile) covers the `su -l` session below via PAM but not this
+# environment (see Dockerfile) covers the `sudo` session below via PAM but not this
 # script's own process tree, hence the explicit export here for dockerd's benefit.
 export HTTP_PROXY=http://127.0.0.1:3128
 export HTTPS_PROXY=http://127.0.0.1:3128
@@ -18,6 +18,12 @@ sleep 1
 
 if [ "$#" -eq 0 ]; then
   set -- zsh -lc claude
+elif [ "${1#-}" != "$1" ]; then
+  # First arg is a flag (e.g. --continue, --resume) rather than a full command
+  # override - forward it to `claude` instead of trying to exec a flag as a program.
+  # `zsh -lc 'script' zsh "$@"` forwards the remaining args as the script's own $@
+  # (same positional-forwarding trick as the sudo call below would use for su).
+  set -- zsh -lc 'exec claude "$@"' zsh "$@"
 fi
 
 # sudo (not `su -l`): su's login-session setup cd's to the target user's home as part
