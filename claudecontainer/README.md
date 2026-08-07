@@ -9,8 +9,8 @@ Code login. No persistent container, no inbound network listener, no whole-home 
 
 ```sh
 ./build.sh              # docker build -t claudecontainer:latest .
-cd ~/Documents/git/some-project
-~/Documents/git/Devcontainer/claudecontainer/run.sh   # drops you into `claude`
+cd ~/path/to/some-project
+~/path/to/Devcontainer/claudecontainer/run.sh   # drops you into `claude`
 ```
 
 Run `./build.sh` again after any change to `Dockerfile`, `entrypoint.sh`, `squid.conf`,
@@ -30,17 +30,17 @@ config on the host (not inside the container):
 
 **bash** (`~/.bashrc`):
 ```sh
-alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+alias claudecli="/path/to/Devcontainer/claudecontainer/run.sh"
 ```
 
 **zsh** (`~/.zshrc`):
 ```sh
-alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+alias claudecli="/path/to/Devcontainer/claudecontainer/run.sh"
 ```
 
 **fish** (`~/.config/fish/config.fish`):
 ```fish
-alias claudecli="/home/linus/Documents/git/Devcontainer/claudecontainer/run.sh"
+alias claudecli="/path/to/Devcontainer/claudecontainer/run.sh"
 ```
 
 Then reload the config (`source ~/.zshrc`, etc., or open a new terminal) and run
