@@ -6,17 +6,37 @@
 # there's no persistent state or mount to go stale. Extra arguments starting with `-`
 # are forwarded to `claude` itself (e.g. `run.sh --continue`); anything else overrides
 # the default `claude` command entirely (e.g. `run.sh bash` for a plain shell).
+#
+# Runs on Docker's default bridge network unless `--host-network` is passed (consumed
+# here, not forwarded on). Only needed when the host's own network setup - e.g. a
+# corporate VPN - blocks the bridge network from reaching DNS/the internet; see
+# README.md. `--host-network` shares the host's network namespace outright, so treat it
+# as an opt-in trade of isolation for connectivity, not a default.
 set -euo pipefail
+
+host_network=0
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--host-network" ]]; then
+    host_network=1
+  else
+    args+=("$arg")
+  fi
+done
+set -- "${args[@]}"
 
 docker_args=(
   --rm -it
   --privileged
-  --network host
   -v "$PWD:$PWD"
   -w "$PWD"
   -v "$HOME/.claude:/home/dev/.claude"
   -v "$HOME/.claude.json:/home/dev/.claude.json"
 )
+
+if [[ "$host_network" -eq 1 ]]; then
+  docker_args+=(--network host)
+fi
 
 # Forwards the host's ssh-agent for outbound git SSH auth (no private keys copied in).
 # No-op if SSH_AUTH_SOCK isn't set - git-over-SSH just won't have agent-forwarded keys.

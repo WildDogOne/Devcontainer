@@ -78,24 +78,35 @@ run` time, not baked into a compose file.
 
 ## Networking, `--privileged`, and the egress allowlist
 
-Same reasoning as `../.devcontainer/README.md`'s "`--network=host` and `--privileged`"
-and "Egress allowlist (squid)" sections: this host's Docker bridge network can't reach
-the internet at all, and Docker-in-Docker (for anything run via the inner `dockerd`,
-e.g. `docker compose` inside a project) needs `--privileged`. Outbound traffic from the
-container is still restricted to `allowed-domains.txt` via the loopback-only squid
-proxy started in `entrypoint.sh` - extend that file when a workflow needs a new host.
+By default `run.sh` runs the container on Docker's normal bridge network - isolated
+from the host's network namespace, same as any other `docker run` without `--network`.
+`--privileged` is still always on, for Docker-in-Docker (anything run via the inner
+`dockerd`, e.g. `docker compose` inside a project).
 
-This relies on tools inside the container actually using that proxy - there's no
-network-level enforcement (an iptables redirect was considered, but `--network host`
-means the container shares the host's real network namespace, so a redirect rule can't
-be safely scoped to just the container's own traffic without risking the host's own
-sessions too). Instead `entrypoint.sh` sets both `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`
-and their lowercase mirrors (curl, git, wget, and Go's `net/http` deliberately only
-honor lowercase `http_proxy` for plain `http://` requests - the httpoxy-CVE mitigation),
-plus explicit `apt` (`/etc/apt/apt.conf.d/95proxy`) and `git` (`--system http.proxy`)
-config, since both are inconsistent about reading proxy env vars on their own. A tool
-that ignores all of that can still reach the network directly - the allowlist is a
-guard against accidents, not a hard sandbox boundary.
+Pass `--host-network` (`run.sh --host-network`, or `--host-network --continue`, etc. -
+order relative to other args doesn't matter, it's stripped out before anything is
+forwarded to `docker` or `claude`) when the host's own network setup can't reach
+DNS/the internet over the bridge network - e.g. behind a corporate VPN that only
+routes traffic for the host's own network namespace. This shares the host's real
+network namespace outright (same reasoning as `../.devcontainer/README.md`'s
+"`--network=host` and `--privileged`" section), so treat it as an opt-in trade of
+isolation for connectivity, not a default.
+
+Either way, outbound traffic from the container is restricted to `allowed-domains.txt`
+via the loopback-only squid proxy started in `entrypoint.sh` - extend that file when a
+workflow needs a new host. This relies on tools inside the container actually using
+that proxy - there's no network-level enforcement (an iptables redirect was considered,
+but under `--host-network` the container shares the host's real network namespace, so a
+redirect rule can't be safely scoped to just the container's own traffic without risking
+the host's own sessions too; the default bridge network doesn't have that problem, but
+nothing here currently sets up an iptables-enforced boundary for it either). Instead
+`entrypoint.sh` sets both `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` and their lowercase
+mirrors (curl, git, wget, and Go's `net/http` deliberately only honor lowercase
+`http_proxy` for plain `http://` requests - the httpoxy-CVE mitigation), plus explicit
+`apt` (`/etc/apt/apt.conf.d/95proxy`) and `git` (`--system http.proxy`) config, since
+both are inconsistent about reading proxy env vars on their own. A tool that ignores all
+of that can still reach the network directly - the allowlist is a guard against
+accidents, not a hard sandbox boundary.
 
 ## Python 3.14 and `.venv`
 
