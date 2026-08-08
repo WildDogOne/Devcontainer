@@ -59,8 +59,8 @@ Effective config on this machine:
   Privileged:     yes (required for Docker-in-Docker)
   Mounts:
     $PWD -> $PWD
-    $HOME/.claude -> /home/dev/.claude
-    $HOME/.claude.json -> /home/dev/.claude.json
+    $HOME/.claude -> $HOME/.claude (dev's \$HOME is set to match, see README.md)
+    $HOME/.claude.json -> $HOME/.claude.json
 EOF
   if [[ -n "${SSH_AUTH_SOCK:-}" && -S "${SSH_AUTH_SOCK}" ]]; then
     echo "    $SSH_AUTH_SOCK -> $SSH_AUTH_SOCK (SSH_AUTH_SOCK, agent forwarding)"
@@ -77,13 +77,24 @@ EOF
   exit 0
 fi
 
+# ~/.claude and ~/.claude.json are mounted at the SAME absolute path inside the
+# container as on the host (not /home/dev/...) - same reasoning as $PWD above, but it
+# matters more here: Claude Code's plugin/marketplace metadata records absolute
+# "installLocation" paths computed from $HOME at the time a marketplace was registered.
+# If the container's $HOME (dev's, /home/dev) didn't match the host's, anything
+# registered while running `claude` natively on the host would mismatch inside the
+# container - Claude Code would still find the files via $HOME/.claude, but the
+# recorded absolute path wouldn't resolve, surfacing as a "cache-miss" error on
+# whatever it registered last. HOST_HOME carries the host's $HOME into the container so
+# entrypoint.sh can point dev's own $HOME at the same path (see entrypoint.sh).
 docker_args=(
   --rm -it
   --privileged
   -v "$PWD:$PWD"
   -w "$PWD"
-  -v "$HOME/.claude:/home/dev/.claude"
-  -v "$HOME/.claude.json:/home/dev/.claude.json"
+  -v "$HOME/.claude:$HOME/.claude"
+  -v "$HOME/.claude.json:$HOME/.claude.json"
+  -e "HOST_HOME=$HOME"
 )
 
 if [[ "$host_network" -eq 1 ]]; then

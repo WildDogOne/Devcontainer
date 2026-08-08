@@ -61,7 +61,16 @@ except where noted:
   above or beside the current directory.
 - `~/.claude` and `~/.claude.json` → reuses your host's Claude Code login instead of
   logging in again inside the container. If these don't exist yet on the host, `run.sh`
-  still works - Docker creates empty mounts and you log in fresh inside.
+  still works - Docker creates empty mounts and you log in fresh inside. Mounted at the
+  *same absolute path* inside the container as on the host, not at the container's
+  own `dev` user's home (`/home/dev`) - `entrypoint.sh` points `dev`'s session `$HOME`
+  at that same host path to match (see its comments). This isn't just cosmetic:
+  Claude Code's plugin/marketplace metadata (`~/.claude/plugins/known_marketplaces.json`)
+  records absolute `installLocation` paths derived from `$HOME` at the time a
+  marketplace was registered. If the container's `$HOME` didn't match the host's,
+  anything registered while running `claude` natively on the host would resolve to a
+  path that doesn't exist inside the container, surfacing as a `cache-miss` error on
+  `/reload-plugins` even though the actual files are right there via the mount.
 - Your host's `$SSH_AUTH_SOCK` (if set) → outbound git-over-SSH auth via agent
   forwarding. No private keys are ever copied into the image.
 

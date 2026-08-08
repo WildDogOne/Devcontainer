@@ -35,6 +35,21 @@ EOF
 git config --system http.proxy "http://127.0.0.1:3128"
 git config --system https.proxy "http://127.0.0.1:3128"
 
+# run.sh mounts ~/.claude/~/.claude.json at the host's own $HOME path (see run.sh for
+# why) and passes that path through as HOST_HOME. dev's own passwd-registered home
+# stays /home/dev, but dev's *session* HOME needs to point at HOST_HOME instead so
+# Claude Code's own $HOME-derived paths (e.g. the plugin marketplace's recorded
+# "installLocation") match what was recorded when `claude` last ran natively on the
+# host. Falls back to /home/dev if run without run.sh (e.g. a bare `docker run`).
+# HOST_HOME itself is mostly other bind mounts' auto-created parent scaffolding
+# (Docker creates missing mount-point parents in the container's own writable layer,
+# not on the host), owned by root by default - chown just the top level so dev can
+# still write new dotfiles/caches directly under it; the mounts underneath already
+# have host-matching ownership (UID 1000) and don't need touching.
+export HOME="${HOST_HOME:-/home/dev}"
+mkdir -p "$HOME"
+chown dev:dev "$HOME"
+
 if [ "$#" -eq 0 ]; then
   set -- zsh -lc claude
 elif [ "${1#-}" != "$1" ]; then
@@ -49,5 +64,8 @@ fi
 # of establishing the session, and that happens before a `-c` script gets a chance to
 # `cd` back - landed every session in /home/dev regardless of run.sh's mount. sudo
 # never chdir's on its own, so the cwd docker run -w set (run.sh's project mount)
-# just passes through untouched; -H still sets HOME=/home/dev for dev's own configs.
-exec sudo -u dev -H --preserve-env=HTTP_PROXY,HTTPS_PROXY,NO_PROXY,http_proxy,https_proxy,no_proxy -- "$@"
+# just passes through untouched. No `-H` here (deliberately, unlike a plain dev-user
+# sudo): that would force HOME back to dev's passwd-registered /home/dev, undoing the
+# HOST_HOME alignment above. --preserve-env=HOME instead carries this script's own
+# $HOME (just set above) through to the dev session.
+exec sudo -u dev --preserve-env=HOME,HTTP_PROXY,HTTPS_PROXY,NO_PROXY,http_proxy,https_proxy,no_proxy -- "$@"

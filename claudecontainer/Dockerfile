@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     # squid: loopback-only egress allowlist proxy, see squid.conf.
     squid \
+    # unzip: required by the Bun installer below (bun ships as a .zip release).
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY squid.conf /etc/squid/squid.conf
@@ -114,6 +116,17 @@ RUN npm install -g @anthropic-ai/claude-code
 # installer's default ~/.local/bin, since root's $HOME isn't dev's $HOME and this
 # needs to work for both.
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Bun: runtime dependency of the official "telegram" Claude Code plugin (its MCP
+# server is executed via `bun run` - see .mcp.json inside the plugin itself, which
+# lands under ~/.claude/plugins once installed - that dir is bind-mounted in from the
+# host by run.sh, so only the `bun` binary itself needs to live in the image). Same
+# /usr/local/bin reasoning as uv above, and for the same reason it matters even more
+# here: entrypoint.sh's `sudo -u dev` calls don't preserve PATH, so a bun install
+# living under a home directory (root's or dev's) would silently vanish once dropped
+# to dev - sudo resets PATH to its own fixed secure_path, which only covers the usual
+# /usr/local/bin, /usr/bin, etc.
+RUN curl -fsSL https://bun.sh/install | env BUN_INSTALL=/usr/local bash
 
 # Stays root: entrypoint.sh needs it to start dockerd/squid, then drops to dev itself
 # (via `sudo -u dev`) before running the actual command.
