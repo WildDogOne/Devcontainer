@@ -21,6 +21,10 @@ Extra arguments starting with `-` are forwarded to `claude` itself, e.g.
 `run.sh --continue` resumes your last session in the current directory. Anything else
 overrides the default `claude` command entirely, e.g. `run.sh bash` for a plain shell.
 
+Run `run.sh --help` any time for a summary of `run.sh`'s own flags plus this machine's
+resolved config (mounts, network mode, whether `run.local.sh` is picked up) - handy as
+a quick sanity check without having to read this file.
+
 ## Shell alias
 
 `run.sh` resolves its own location rather than relying on cwd, so an alias to its
