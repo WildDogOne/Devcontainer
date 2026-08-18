@@ -1,5 +1,10 @@
 FROM ubuntu:24.04
 
+# Lets build.sh find and prune old, now-untagged versions of this image left behind by
+# --no-cache rebuilds (each rebuild retags claudecontainer:latest onto the new image,
+# dangling the previous one) without touching unrelated dangling images on the host.
+LABEL project=claudecontainer
+
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Mirrors ../.devcontainer/Dockerfile's package list (same reasoning: hand-installed
