@@ -5,7 +5,7 @@
 # (see entrypoint.sh/run.sh).
 set -eu
 cd "$(dirname "$0")"
-docker build --no-cache --network host -t  claudecontainer:latest .
+docker build --no-cache -t  claudecontainer:latest .
 
 # --no-cache means every rebuild produces a brand-new image and dangles whatever
 # claudecontainer:latest pointed at before (docker moves the tag, not the image). Those
