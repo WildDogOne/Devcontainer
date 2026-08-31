@@ -107,7 +107,12 @@ isolation for connectivity, not a default.
 
 Either way, outbound traffic from the container is restricted to `allowed-domains.txt`
 via the loopback-only squid proxy started in `entrypoint.sh` - extend that file when a
-workflow needs a new host. This relies on tools inside the container actually using
+workflow needs a new host, or pass `run.sh --allow-list <path>` to replace the list for
+just one session (e.g. a one-off task that needs a host you don't want in the image's
+permanent default). `<path>` is a host file in the same one-domain-per-line format as
+`allowed-domains.txt`; it's bind-mounted read-only and swapped in by `entrypoint.sh`
+before squid starts. Since the container is disposable (`--rm`), this never touches the
+image or any other session - rebuild-free, and self-cleaning. This relies on tools inside the container actually using
 that proxy - there's no network-level enforcement (an iptables redirect was considered,
 but under `--host-network` the container shares the host's real network namespace, so a
 redirect rule can't be safely scoped to just the container's own traffic without risking

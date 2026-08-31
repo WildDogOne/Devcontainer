@@ -19,6 +19,17 @@ export NO_PROXY=localhost,127.0.0.1
 export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
+
+# run.sh --allow-list bind-mounts a replacement domains file here, read-only, only when
+# that flag is passed. Overwriting the image's baked-in allowed-domains.txt (rather than
+# repointing squid.conf at the mount) keeps squid.conf static and this session-scoped:
+# the container's writable layer is discarded with it (--rm), so the image's own default
+# is untouched for every other session.
+if [ -f /etc/squid/allowed-domains.override.txt ]; then
+  echo "entrypoint.sh: using --allow-list override for squid's egress allowlist" >&2
+  cp /etc/squid/allowed-domains.override.txt /etc/squid/allowed-domains.txt
+fi
+
 nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &
 sleep 1
 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &
