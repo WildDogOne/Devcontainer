@@ -81,6 +81,23 @@ opt-in: nothing breaks if it's missing. Every extra mount here widens the sandbo
 past "just `$PWD`", so treat additions deliberately, not as a default place to bolt
 things on.
 
+For a mount you only need for one session rather than every session on this machine,
+pass `run.sh --mount <path>` instead (repeatable) - it's additive on top of `$PWD`, the
+Claude Code login, and `run.local.sh`'s `EXTRA_MOUNTS`, without editing that file. A bare
+path with no `:` mounts read-write at that same path on both sides, same as `$PWD`
+itself; give `host:container[:ro]` explicitly to mount somewhere else or read-only.
+
+```sh
+# One extra directory, read-write, same path on both sides:
+run.sh --mount ~/data
+
+# Different container path, and/or read-only:
+run.sh --mount ~/reference-docs:/reference-docs:ro --continue
+
+# Repeat the flag for more than one extra mount:
+run.sh --mount ~/data --mount ~/models:/models:ro
+```
+
 Earlier versions of this setup used `docker compose` with a static volume mount
 defaulting to your entire `$HOME`, plus a persistent SSH listener for JetBrains
 Gateway. Both are gone: the whole-home mount defeated the point of a "restricted"
@@ -112,7 +129,19 @@ just one session (e.g. a one-off task that needs a host you don't want in the im
 permanent default). `<path>` is a host file in the same one-domain-per-line format as
 `allowed-domains.txt`; it's bind-mounted read-only and swapped in by `entrypoint.sh`
 before squid starts. Since the container is disposable (`--rm`), this never touches the
-image or any other session - rebuild-free, and self-cleaning. This relies on tools inside the container actually using
+image or any other session - rebuild-free, and self-cleaning.
+
+```sh
+# ./extra-domains.txt, one domain per line, e.g.:
+#   .pypi.org
+#   .example-internal-registry.com
+run.sh --allow-list ./extra-domains.txt
+
+# Combined with a forwarded claude flag:
+run.sh --allow-list ./extra-domains.txt --continue
+```
+
+This relies on tools inside the container actually using
 that proxy - there's no network-level enforcement (an iptables redirect was considered,
 but under `--host-network` the container shares the host's real network namespace, so a
 redirect rule can't be safely scoped to just the container's own traffic without risking

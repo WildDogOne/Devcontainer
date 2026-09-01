@@ -19,6 +19,14 @@
 # entrypoint.sh overwrites the image's baked-in allowed-domains.txt with it before squid
 # starts. Only affects this disposable container - the image itself, and every other
 # session, still use the default list. See README.md.
+#
+# `--mount <path>` or `--mount <host:container[:ro]>` (consumed here, not forwarded on;
+# repeatable) adds one extra bind mount to this session only, on top of $PWD/the Claude
+# login/run.local.sh's EXTRA_MOUNTS. A bare path with no ':' mounts read-write at that
+# same path on both sides (e.g. `--mount ~/data` -> ~/data:~/data); give host:container[:ro]
+# explicitly to mount elsewhere or read-only. Use it for a one-off session that needs a
+# path run.local.sh doesn't already cover; for anything needed on every session on this
+# machine, put it in run.local.sh instead.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +34,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 host_network=0
 show_help=0
 allow_list=""
+cli_mounts=()
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +46,20 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       allow_list="$2"
+      shift 2
+      ;;
+    --mount)
+      if [[ $# -lt 2 ]]; then
+        echo "run.sh: --mount requires a host path, or host:container[:ro], argument" >&2
+        exit 1
+      fi
+      # No ':' -> mount at the same path on both sides, read-write (matches $PWD's own
+      # same-path-both-sides default above). Give container:ro explicitly to differ.
+      if [[ "$2" == *:* ]]; then
+        cli_mounts+=("$2")
+      else
+        cli_mounts+=("$2:$2")
+      fi
       shift 2
       ;;
     *) args+=("$1"); shift ;;
@@ -61,7 +84,8 @@ fi
 
 if [[ "$show_help" -eq 1 ]]; then
   cat <<EOF
-Usage: run.sh [--host-network] [--allow-list <path>] [-h|--help] [claude-args... | command...]
+Usage: run.sh [--host-network] [--allow-list <path>] [--mount <path|host:container[:ro]>]...
+              [-h|--help] [claude-args... | command...]
 
 Launches a fresh, disposable claudecontainer scoped to \$PWD. Only \$PWD and your
 Claude Code login are mounted in; the container is removed on exit (--rm).
@@ -74,6 +98,11 @@ Claude Code login are mounted in; the container is removed on exit (--rm).
   --allow-list PATH Replace the squid egress allowlist for this session only, with
                     PATH (one domain per line, same format as allowed-domains.txt).
                     Doesn't touch the image or other sessions. Consumed here, never
+                    forwarded to docker/claude.
+  --mount SPEC      Add one extra bind mount for this session only. A bare PATH mounts
+                    read-write at that same path on both sides; use host:container[:ro]
+                    to mount elsewhere or read-only. Repeatable. On top of run.local.sh's
+                    EXTRA_MOUNTS, not a replacement for it. Consumed here, never
                     forwarded to docker/claude.
 
 Anything else starting with '-' is forwarded to \`claude\` itself (e.g. --continue).
@@ -101,6 +130,11 @@ EOF
     done
   else
     echo "    (no run.local.sh - no extra mounts)"
+  fi
+  if [[ ${#cli_mounts[@]} -gt 0 ]]; then
+    for mount in "${cli_mounts[@]}"; do
+      echo "    $mount (from --mount)"
+    done
   fi
   exit 0
 fi
@@ -143,6 +177,14 @@ fi
 
 if [[ ${#EXTRA_MOUNTS[@]} -gt 0 ]]; then
   for mount in "${EXTRA_MOUNTS[@]}"; do
+    docker_args+=(-v "$mount")
+  done
+fi
+
+# --mount, one or more times - session-scoped extra mounts on top of run.local.sh's
+# EXTRA_MOUNTS, without needing to edit that (personal, per-machine) file.
+if [[ ${#cli_mounts[@]} -gt 0 ]]; then
+  for mount in "${cli_mounts[@]}"; do
     docker_args+=(-v "$mount")
   done
 fi
