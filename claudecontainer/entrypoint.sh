@@ -30,6 +30,16 @@ if [ -f /etc/squid/allowed-domains.override.txt ]; then
   cp /etc/squid/allowed-domains.override.txt /etc/squid/allowed-domains.txt
 fi
 
+# run.sh --allow-internet sets this to drop the domain allowlist check entirely for this
+# session, leaving the Safe_ports/SSL_ports port restrictions in squid.conf untouched -
+# still only plain HTTP on 80 and CONNECT to 443, just no longer filtered by domain.
+# Session-scoped only: patches this container's own writable-layer copy of squid.conf,
+# discarded with it (--rm); the image's squid.conf stays static.
+if [ "${SQUID_ALLOW_INTERNET:-0}" = "1" ]; then
+  echo "entrypoint.sh: --allow-internet passed, disabling squid's domain allowlist for this session" >&2
+  sed -i 's/^http_access allow allowed_dst$/http_access allow all/' /etc/squid/squid.conf
+fi
+
 nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &
 sleep 1
 nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &

@@ -27,6 +27,15 @@
 # explicitly to mount elsewhere or read-only. Use it for a one-off session that needs a
 # path run.local.sh doesn't already cover; for anything needed on every session on this
 # machine, put it in run.local.sh instead.
+#
+# `--allow-internet` (consumed here, not forwarded on) drops squid's domain allowlist for this
+# one session: entrypoint.sh patches the running config so `http_access allow
+# allowed_dst` becomes `http_access allow all`, while leaving the Safe_ports/SSL_ports
+# checks in place (still only plain HTTP on 80 and CONNECT to 443 through the proxy).
+# Traffic is still proxied and logged, just no longer domain-filtered. Only affects this
+# disposable container - the image, allowed-domains.txt, and every other session are
+# untouched. Mutually exclusive with --allow-list (one drops the list, the other swaps
+# it - combining them is almost certainly not what you meant).
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,12 +43,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 host_network=0
 show_help=0
 allow_list=""
+allow_internet=0
 cli_mounts=()
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host-network) host_network=1; shift ;;
     -h|--help) show_help=1; shift ;;
+    --allow-internet) allow_internet=1; shift ;;
     --allow-list)
       if [[ $# -lt 2 ]]; then
         echo "run.sh: --allow-list requires a path argument" >&2
@@ -67,6 +78,11 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${args[@]}"
 
+if [[ -n "$allow_list" && "$allow_internet" -eq 1 ]]; then
+  echo "run.sh: --allow-list and --allow-internet are mutually exclusive" >&2
+  exit 1
+fi
+
 if [[ -n "$allow_list" ]]; then
   if [[ ! -f "$allow_list" ]]; then
     echo "run.sh: --allow-list file not found: $allow_list" >&2
@@ -84,8 +100,8 @@ fi
 
 if [[ "$show_help" -eq 1 ]]; then
   cat <<EOF
-Usage: run.sh [--host-network] [--allow-list <path>] [--mount <path|host:container[:ro]>]...
-              [-h|--help] [claude-args... | command...]
+Usage: run.sh [--host-network] [--allow-list <path> | --allow-internet]
+              [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
 
 Launches a fresh, disposable claudecontainer scoped to \$PWD. Only \$PWD and your
 Claude Code login are mounted in; the container is removed on exit (--rm).
@@ -99,6 +115,10 @@ Claude Code login are mounted in; the container is removed on exit (--rm).
                     PATH (one domain per line, same format as allowed-domains.txt).
                     Doesn't touch the image or other sessions. Consumed here, never
                     forwarded to docker/claude.
+  --allow-internet  Drop squid's domain allowlist for this session only - any host is
+                    reachable, still only over plain HTTP (80) or CONNECT to 443,
+                    still proxied and logged. Mutually exclusive with --allow-list.
+                    Consumed here, never forwarded to docker/claude.
   --mount SPEC      Add one extra bind mount for this session only. A bare PATH mounts
                     read-write at that same path on both sides; use host:container[:ro]
                     to mount elsewhere or read-only. Repeatable. On top of run.local.sh's
@@ -113,7 +133,7 @@ Effective config on this machine:
   Image:          claudecontainer:latest
   Network:        $([[ "$host_network" -eq 1 ]] && echo "host (--host-network passed)" || echo "bridge (default; pass --host-network to change)")
   Privileged:     yes (required for Docker-in-Docker)
-  Allowlist:      $([[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)")
+  Allowlist:      $([[ "$allow_internet" -eq 1 ]] && echo "DISABLED (--allow-internet passed - any host reachable via the proxy)" || { [[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)"; })
   Mounts:
     $PWD -> $PWD
     $HOME/.claude -> $HOME/.claude (dev's \$HOME is set to match, see README.md)
@@ -167,6 +187,12 @@ fi
 # (if mounted) before starting squid - see entrypoint.sh.
 if [[ -n "$allow_list" ]]; then
   docker_args+=(-v "$allow_list:/etc/squid/allowed-domains.override.txt:ro")
+fi
+
+# entrypoint.sh patches squid.conf to drop the domain allowlist check when this is set -
+# see entrypoint.sh.
+if [[ "$allow_internet" -eq 1 ]]; then
+  docker_args+=(-e "SQUID_ALLOW_INTERNET=1")
 fi
 
 # Forwards the host's ssh-agent for outbound git SSH auth (no private keys copied in).

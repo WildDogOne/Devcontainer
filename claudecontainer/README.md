@@ -141,6 +141,19 @@ run.sh --allow-list ./extra-domains.txt
 run.sh --allow-list ./extra-domains.txt --continue
 ```
 
+For a session where the domain allowlist itself is the obstacle rather than any specific
+missing domain, pass `--allow-internet` instead to drop the check entirely for that session -
+`entrypoint.sh` patches `squid.conf` so `http_access allow allowed_dst` becomes
+`http_access allow all`, leaving the `Safe_ports`/`SSL_ports` rules in place (still only
+plain HTTP on port 80, and `CONNECT` only to port 443). Traffic still goes through squid
+and still gets logged, it's just no longer domain-filtered. Same disposability as
+`--allow-list`: session-scoped only, mutually exclusive with `--allow-list`, nothing to
+rebuild or clean up.
+
+```sh
+run.sh --allow-internet
+```
+
 This relies on tools inside the container actually using
 that proxy - there's no network-level enforcement (an iptables redirect was considered,
 but under `--host-network` the container shares the host's real network namespace, so a
