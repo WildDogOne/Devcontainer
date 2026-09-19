@@ -13,17 +13,33 @@ cd ~/path/to/some-project
 ~/path/to/Devcontainer/claudecontainer/run.sh   # drops you into `claude`
 ```
 
-Run `./build.sh` again after any change to `Dockerfile`, `entrypoint.sh`, `squid.conf`,
-or `allowed-domains.txt` - all four are baked into the image at build time (`entrypoint.sh`
-via `COPY`), so a stale image keeps running the old version until rebuilt.
+**Windows (PowerShell + Docker Desktop)** - `build.ps1`/`run.ps1` are drop-in
+counterparts of `build.sh`/`run.sh`, same flags, same defaults:
+
+```powershell
+.\build.ps1
+cd C:\path\to\some-project
+C:\path\to\Devcontainer\claudecontainer\run.ps1   # drops you into `claude`
+```
+
+See [Windows notes](#windows-powershell--docker-desktop) below for the handful of
+places Windows genuinely can't do the same thing as Linux/macOS (path handling, SSH
+agent forwarding).
+
+Run `./build.sh`/`.\build.ps1` again after any change to `Dockerfile`, `entrypoint.sh`,
+`squid.conf`, or `allowed-domains.txt` - all four are baked into the image at build time
+(`entrypoint.sh` via `COPY`), so a stale image keeps running the old version until
+rebuilt.
 
 Extra arguments starting with `-` are forwarded to `claude` itself, e.g.
-`run.sh --continue` resumes your last session in the current directory. Anything else
-overrides the default `claude` command entirely, e.g. `run.sh bash` for a plain shell.
+`run.sh --continue` (`run.ps1 --continue` on Windows) resumes your last session in the
+current directory. Anything else overrides the default `claude` command entirely, e.g.
+`run.sh bash` for a plain shell.
 
-Run `run.sh --help` any time for a summary of `run.sh`'s own flags plus this machine's
-resolved config (mounts, network mode, whether `run.local.sh` is picked up) - handy as
-a quick sanity check without having to read this file.
+Run `run.sh --help` / `run.ps1 --help` any time for a summary of the script's own flags
+plus this machine's resolved config (mounts, network mode, whether
+`run.local.sh`/`run.local.ps1` is picked up) - handy as a quick sanity check without
+having to read this file.
 
 ## Shell alias
 
@@ -50,6 +66,19 @@ alias claudecli="/path/to/Devcontainer/claudecontainer/run.sh"
 Then reload the config (`source ~/.zshrc`, etc., or open a new terminal) and run
 `claudecli` from any project.
 
+**PowerShell**: `Set-Alias` can't forward arguments the way a shell alias can, so use a
+function instead - add this to your PowerShell profile (`$PROFILE`; run
+`notepad $PROFILE` to edit it, creating it first with
+`New-Item -ItemType File -Force -Path $PROFILE` if it doesn't exist yet):
+
+```powershell
+function claudecli { & "C:\path\to\Devcontainer\claudecontainer\run.ps1" @args }
+```
+
+Reload the profile (`. $PROFILE`, or open a new PowerShell window) and run `claudecli`
+from any project directory, same as the bash/zsh/fish alias - `@args` forwards
+everything through untouched, including `-`-prefixed flags like `--continue`.
+
 ## What gets mounted, and why only that
 
 By default, `run.sh` mounts exactly three things into the container, all read-write
@@ -72,14 +101,16 @@ except where noted:
   path that doesn't exist inside the container, surfacing as a `cache-miss` error on
   `/reload-plugins` even though the actual files are right there via the mount.
 - Your host's `$SSH_AUTH_SOCK` (if set) → outbound git-over-SSH auth via agent
-  forwarding. No private keys are ever copied into the image.
+  forwarding. No private keys are ever copied into the image. (Windows: see
+  [Windows notes](#windows-powershell--docker-desktop) - there's no `$SSH_AUTH_SOCK` to
+  forward, so `run.ps1` uses Docker Desktop's own agent-bridging instead.)
 
 `run.sh` also sources a `run.local.sh` next to itself, if present, for optional
 per-machine extra mounts beyond those three (see `run.local.sh.example`). It's
 gitignored - personal host paths don't belong in a shared repo - and entirely
 opt-in: nothing breaks if it's missing. Every extra mount here widens the sandbox
 past "just `$PWD`", so treat additions deliberately, not as a default place to bolt
-things on.
+things on. (`run.ps1` does the same via `run.local.ps1` / `run.local.ps1.example`.)
 
 For a mount you only need for one session rather than every session on this machine,
 pass `run.sh --mount <path>` instead (repeatable) - it's additive on top of `$PWD`, the
@@ -96,6 +127,18 @@ run.sh --mount ~/reference-docs:/reference-docs:ro --continue
 
 # Repeat the flag for more than one extra mount:
 run.sh --mount ~/data --mount ~/models:/models:ro
+```
+
+```powershell
+# Windows: bare path -> read-write, translated to a POSIX-style path in the container
+# (C:\data -> /c/data; see Windows notes):
+run.ps1 --mount C:\data
+
+# Different container path, and/or read-only:
+run.ps1 --mount C:\reference-docs:/reference-docs:ro --continue
+
+# Repeat the flag for more than one extra mount:
+run.ps1 --mount C:\data --mount C:\models:/models:ro
 ```
 
 Earlier versions of this setup used `docker compose` with a static volume mount
@@ -120,7 +163,9 @@ DNS/the internet over the bridge network - e.g. behind a corporate VPN that only
 routes traffic for the host's own network namespace. This shares the host's real
 network namespace outright (same reasoning as `../.devcontainer/README.md`'s
 "`--network=host` and `--privileged`" section), so treat it as an opt-in trade of
-isolation for connectivity, not a default.
+isolation for connectivity, not a default. Same flag, same effect via `run.ps1
+--host-network` on Windows, though `--network host` support in Docker Desktop is
+comparatively recent - update Docker Desktop if it's rejected.
 
 Either way, outbound traffic from the container is restricted to `allowed-domains.txt`
 via the loopback-only squid proxy started in `entrypoint.sh` - extend that file when a
@@ -167,6 +212,72 @@ mirrors (curl, git, wget, and Go's `net/http` deliberately only honor lowercase
 both are inconsistent about reading proxy env vars on their own. A tool that ignores all
 of that can still reach the network directly - the allowlist is a guard against
 accidents, not a hard sandbox boundary.
+
+## Docker socket access: nested by default, `--allow-container` for the host daemon
+
+By default, `--privileged` plus a nested `dockerd` (started in `entrypoint.sh`) give the
+container its own private Docker-in-Docker daemon - `docker`/`docker compose` run inside
+the sandbox work, but the containers/images/networks they create are entirely inside this
+disposable container and vanish with it (`--rm`). The host's own Docker daemon is not
+reachable.
+
+Pass `run.sh --allow-container` to bind-mount the **host's** `/var/run/docker.sock` into
+the container instead (`entrypoint.sh` then skips starting its own nested `dockerd`, since
+it would just fail to bind the same path). Containers started this way run as siblings on
+the host's real daemon - visible to `docker ps` on the host, not cleaned up when this
+container exits, and able to see/affect the host's other containers, images, volumes, and
+networks.
+
+**This is off by default and should be treated as root-equivalent access to the host.**
+Anyone who can talk to a Docker socket can trivially get a root shell on whatever machine
+owns it (e.g. `docker run -v /:/host -it alpine chroot /host`), so mounting the host's
+socket into this sandbox punches straight through the "restricted, disposable container"
+model this repo otherwise provides. Only pass it for a session that specifically needs to
+drive the host daemon (e.g. managing host-level `docker compose` services), and only when
+you trust everything that will run inside this container.
+
+```sh
+run.sh --allow-container
+```
+
+## Windows (PowerShell + Docker Desktop)
+
+`build.ps1` and `run.ps1` mirror `build.sh`/`run.sh` flag-for-flag - same defaults, same
+`--host-network`/`--allow-list`/`--allow-internet`/`--mount` flags, same arg-forwarding
+to `claude`. A few things genuinely work differently because Windows isn't POSIX:
+
+- **Path translation.** The container image is Linux, so Windows paths
+  (`C:\Users\me\project`) can't be mounted "at the same absolute path" the way `run.sh`
+  does on Linux/macOS - there's no such path inside a Linux filesystem. `run.ps1`
+  instead translates each Windows path to a POSIX look-alike (`C:\Users\me\project` ->
+  `/c/Users/me/project`, lowercased drive letter) and mounts `$PWD`, `~/.claude`,
+  `~/.claude.json`, and the container's `$HOME` all at that translated path - so
+  everything stays internally consistent from one session to the next. The one place
+  this is only an *approximation* rather than an exact match: `~/.claude.json`'s plugin
+  marketplace metadata records absolute paths from whatever `claude` last ran on the
+  host directly used. If that was `claude` installed natively on Windows, those are real
+  Windows paths, which have no equivalent inside a Linux container at all (translated or
+  not) - you may hit the same `cache-miss`-on-`/reload-plugins` symptom described above
+  for a mismatched `$HOME`. Running `claude` exclusively through `run.ps1` avoids this
+  since every session uses the same translation consistently.
+- **SSH agent forwarding.** There's no Unix-socket `$SSH_AUTH_SOCK` on native Windows to
+  bind-mount the way `run.sh` does. `run.ps1` instead checks whether the Windows
+  `ssh-agent` service is running and, if so, uses Docker Desktop's own agent bridge
+  (`/run/host-services/ssh-auth.sock`, exposed the same way on Docker Desktop for Mac) -
+  no private keys are copied in, same as the Linux/macOS path. Start the service first
+  (`Start-Service ssh-agent`, and `ssh-add` your key) if git-over-SSH inside the
+  container comes back unauthenticated.
+- **Virtual/cloud-sync drives.** Docker Desktop's bind mounts only work for paths it can
+  actually see through its VM (WSL2 or Hyper-V backend) - ordinary local drives are
+  fine, but a drive backed by a third-party virtual filesystem driver (a cloud-sync
+  client's virtual drive, a `subst` mapping that doesn't resolve to a real volume, etc.)
+  may not be. When that happens, Docker doesn't error - it silently mounts an *empty*
+  directory, which shows up as "my project directory is empty inside the container".
+  If you hit this, move the project (or at least run `run.ps1` from a project) on a real
+  local drive.
+- **`--host-network`** needs a Docker Desktop version new enough to support
+  `--network host` (added comparatively recently for Windows/Mac); older versions reject
+  the flag outright.
 
 ## Python 3.14 and `.venv`
 

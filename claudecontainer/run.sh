@@ -36,6 +36,16 @@
 # disposable container - the image, allowed-domains.txt, and every other session are
 # untouched. Mutually exclusive with --allow-list (one drops the list, the other swaps
 # it - combining them is almost certainly not what you meant).
+#
+# `--allow-container` (consumed here, not forwarded on) bind-mounts the HOST's own Docker
+# socket (/var/run/docker.sock) into the container, instead of the nested dockerd
+# entrypoint.sh otherwise starts inside the container. Containers started this way are
+# siblings on the host's real Docker daemon, not nested inside the sandbox - they see the
+# host's other containers/images/networks and are not cleaned up when this container
+# exits. Off by default: a container's root-equivalent access to the host's Docker socket
+# is effectively root on the host (bind-mount any host path in, run as any UID). Only pass
+# this for a workflow that specifically needs the host daemon (e.g. driving host
+# `docker compose` services) and that you trust to run inside this sandbox.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +54,7 @@ host_network=0
 show_help=0
 allow_list=""
 allow_internet=0
+allow_container=0
 cli_mounts=()
 args=()
 while [[ $# -gt 0 ]]; do
@@ -51,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --host-network) host_network=1; shift ;;
     -h|--help) show_help=1; shift ;;
     --allow-internet) allow_internet=1; shift ;;
+    --allow-container) allow_container=1; shift ;;
     --allow-list)
       if [[ $# -lt 2 ]]; then
         echo "run.sh: --allow-list requires a path argument" >&2
@@ -91,6 +103,11 @@ if [[ -n "$allow_list" ]]; then
   allow_list="$(cd "$(dirname "$allow_list")" && pwd)/$(basename "$allow_list")"
 fi
 
+if [[ "$allow_container" -eq 1 && ! -S /var/run/docker.sock ]]; then
+  echo "run.sh: --allow-container passed but /var/run/docker.sock not found on this host" >&2
+  exit 1
+fi
+
 # Personal, per-machine mounts beyond $PWD - see run.local.sh.example. Gitignored and
 # entirely optional: nothing breaks if it's missing, EXTRA_MOUNTS just stays empty.
 EXTRA_MOUNTS=()
@@ -100,7 +117,7 @@ fi
 
 if [[ "$show_help" -eq 1 ]]; then
   cat <<EOF
-Usage: run.sh [--host-network] [--allow-list <path> | --allow-internet]
+Usage: run.sh [--host-network] [--allow-list <path> | --allow-internet] [--allow-container]
               [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
 
 Launches a fresh, disposable claudecontainer scoped to \$PWD. Only \$PWD and your
@@ -124,6 +141,11 @@ Claude Code login are mounted in; the container is removed on exit (--rm).
                     to mount elsewhere or read-only. Repeatable. On top of run.local.sh's
                     EXTRA_MOUNTS, not a replacement for it. Consumed here, never
                     forwarded to docker/claude.
+  --allow-container Bind-mount the HOST's own Docker socket in, instead of the sandbox's
+                    nested dockerd. Containers started this way run on the host daemon as
+                    siblings, not nested inside the sandbox - host-visible, not cleaned up
+                    when this container exits. OFF by default: this is root-equivalent
+                    access to the host. Consumed here, never forwarded to docker/claude.
 
 Anything else starting with '-' is forwarded to \`claude\` itself (e.g. --continue).
 A bare command (e.g. \`run.sh bash\`) overrides the default \`claude\` invocation
@@ -134,6 +156,7 @@ Effective config on this machine:
   Network:        $([[ "$host_network" -eq 1 ]] && echo "host (--host-network passed)" || echo "bridge (default; pass --host-network to change)")
   Privileged:     yes (required for Docker-in-Docker)
   Allowlist:      $([[ "$allow_internet" -eq 1 ]] && echo "DISABLED (--allow-internet passed - any host reachable via the proxy)" || { [[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)"; })
+  Docker socket:  $([[ "$allow_container" -eq 1 ]] && echo "HOST /var/run/docker.sock (--allow-container passed - root-equivalent host access)" || echo "sandboxed nested dockerd only (default; pass --allow-container to use the host daemon)")
   Mounts:
     $PWD -> $PWD
     $HOME/.claude -> $HOME/.claude (dev's \$HOME is set to match, see README.md)
@@ -193,6 +216,13 @@ fi
 # see entrypoint.sh.
 if [[ "$allow_internet" -eq 1 ]]; then
   docker_args+=(-e "SQUID_ALLOW_INTERNET=1")
+fi
+
+# entrypoint.sh skips starting its own nested dockerd when this is set, since the host
+# socket is mounted at the same path and would conflict with it - see entrypoint.sh.
+# Root-equivalent access to the host: off by default, opt-in per session only.
+if [[ "$allow_container" -eq 1 ]]; then
+  docker_args+=(-v /var/run/docker.sock:/var/run/docker.sock -e "ALLOW_CONTAINER=1")
 fi
 
 # Forwards the host's ssh-agent for outbound git SSH auth (no private keys copied in).

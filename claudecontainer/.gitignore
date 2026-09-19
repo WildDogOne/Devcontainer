@@ -1,4 +1,5 @@
-# Personal extra-mount config for run.sh - host paths don't belong in a shared repo.
-# See run.local.sh.example.
+# Personal extra-mount config for run.sh/run.ps1 - host paths don't belong in a shared repo.
+# See run.local.sh.example / run.local.ps1.example.
 run.local.sh
+run.local.ps1
 allowed-domains.txt

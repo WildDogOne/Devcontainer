@@ -42,8 +42,26 @@ fi
 
 nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &
 sleep 1
-nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &
-sleep 1
+
+# run.sh --allow-container bind-mounts the HOST's own docker.sock at this same path,
+# so starting our own nested dockerd here would just fail to bind it. Instead, give dev
+# access to the mounted socket by joining the group that owns it on the host - dev's own
+# UID/GID (1000) has no relation to whatever GID owns the socket on an arbitrary host.
+# The docker *client* (installed for the nested case) works unmodified against either
+# socket; only the daemon side differs.
+if [ "${ALLOW_CONTAINER:-0}" = "1" ]; then
+  echo "entrypoint.sh: --allow-container passed, using the HOST's Docker socket instead of a nested dockerd" >&2
+  sock_gid="$(stat -c '%g' /var/run/docker.sock)"
+  sock_group="$(getent group "$sock_gid" | cut -d: -f1)"
+  if [ -z "$sock_group" ]; then
+    sock_group=hostdocker
+    groupadd -g "$sock_gid" "$sock_group"
+  fi
+  usermod -aG "$sock_group" dev
+else
+  nohup dockerd --host=unix:///var/run/docker.sock > /tmp/dockerd.log 2>&1 &
+  sleep 1
+fi
 
 # apt doesn't reliably pick up *_proxy env vars for Acquire (varies by version/method),
 # and git's http transport can be configured to skip its own env lookup - pin both
