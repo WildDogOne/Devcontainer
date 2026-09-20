@@ -46,6 +46,15 @@
 # is effectively root on the host (bind-mount any host path in, run as any UID). Only pass
 # this for a workflow that specifically needs the host daemon (e.g. driving host
 # `docker compose` services) and that you trust to run inside this sandbox.
+#
+# `--sysbox` (consumed here, not forwarded on) swaps `--privileged` for
+# `--runtime=sysbox-runc` (https://github.com/nestybox/sysbox), which must already be
+# installed and registered with the host's Docker daemon - this script only selects it,
+# it doesn't install it. Sysbox gives the nested dockerd entrypoint.sh starts real
+# user-namespace isolation instead of `--privileged`'s "may as well be root on the host"
+# access, at the cost of a host-side dependency beyond plain Docker. Irrelevant if
+# combined with --allow-container, since that path skips the nested dockerd entirely -
+# there's nothing left for sysbox's isolation to apply to.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,6 +64,7 @@ show_help=0
 allow_list=""
 allow_internet=0
 allow_container=0
+sysbox=0
 cli_mounts=()
 args=()
 while [[ $# -gt 0 ]]; do
@@ -63,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help) show_help=1; shift ;;
     --allow-internet) allow_internet=1; shift ;;
     --allow-container) allow_container=1; shift ;;
+    --sysbox) sysbox=1; shift ;;
     --allow-list)
       if [[ $# -lt 2 ]]; then
         echo "run.sh: --allow-list requires a path argument" >&2
@@ -108,6 +119,12 @@ if [[ "$allow_container" -eq 1 && ! -S /var/run/docker.sock ]]; then
   exit 1
 fi
 
+if [[ "$sysbox" -eq 1 ]] && ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q sysbox-runc; then
+  echo "run.sh: --sysbox passed but the sysbox-runc runtime isn't registered with this" >&2
+  echo "host's Docker daemon. Install sysbox first: https://github.com/nestybox/sysbox" >&2
+  exit 1
+fi
+
 # Personal, per-machine mounts beyond $PWD - see run.local.sh.example. Gitignored and
 # entirely optional: nothing breaks if it's missing, EXTRA_MOUNTS just stays empty.
 EXTRA_MOUNTS=()
@@ -118,7 +135,7 @@ fi
 if [[ "$show_help" -eq 1 ]]; then
   cat <<EOF
 Usage: run.sh [--host-network] [--allow-list <path> | --allow-internet] [--allow-container]
-              [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
+              [--sysbox] [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
 
 Launches a fresh, disposable claudecontainer scoped to \$PWD. Only \$PWD and your
 Claude Code login are mounted in; the container is removed on exit (--rm).
@@ -146,6 +163,11 @@ Claude Code login are mounted in; the container is removed on exit (--rm).
                     siblings, not nested inside the sandbox - host-visible, not cleaned up
                     when this container exits. OFF by default: this is root-equivalent
                     access to the host. Consumed here, never forwarded to docker/claude.
+  --sysbox          Use the sysbox-runc OCI runtime instead of --privileged, for real
+                    user-namespace isolation around the nested dockerd. Must already be
+                    installed and registered with this host's Docker daemon - see
+                    https://github.com/nestybox/sysbox. Consumed here, never forwarded
+                    to docker/claude.
 
 Anything else starting with '-' is forwarded to \`claude\` itself (e.g. --continue).
 A bare command (e.g. \`run.sh bash\`) overrides the default \`claude\` invocation
@@ -154,7 +176,7 @@ entirely. Full details: README.md.
 Effective config on this machine:
   Image:          claudecontainer:latest
   Network:        $([[ "$host_network" -eq 1 ]] && echo "host (--host-network passed)" || echo "bridge (default; pass --host-network to change)")
-  Privileged:     yes (required for Docker-in-Docker)
+  Runtime:        $([[ "$sysbox" -eq 1 ]] && echo "sysbox-runc (--sysbox passed; no --privileged)" || echo "--privileged (default; pass --sysbox to use sysbox-runc instead, if installed)")
   Allowlist:      $([[ "$allow_internet" -eq 1 ]] && echo "DISABLED (--allow-internet passed - any host reachable via the proxy)" || { [[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)"; })
   Docker socket:  $([[ "$allow_container" -eq 1 ]] && echo "HOST /var/run/docker.sock (--allow-container passed - root-equivalent host access)" || echo "sandboxed nested dockerd only (default; pass --allow-container to use the host daemon)")
   Mounts:
@@ -194,13 +216,21 @@ fi
 # entrypoint.sh can point dev's own $HOME at the same path (see entrypoint.sh).
 docker_args=(
   --rm -it
-  --privileged
   -v "$PWD:$PWD"
   -w "$PWD"
   -v "$HOME/.claude:$HOME/.claude"
   -v "$HOME/.claude.json:$HOME/.claude.json"
   -e "HOST_HOME=$HOME"
 )
+
+# --privileged is the default, needed for the inner dockerd (Docker-in-Docker). --sysbox
+# swaps it for the sysbox-runc runtime instead, which gives that same nested dockerd real
+# user-namespace isolation rather than near-root host access - see the header comment.
+if [[ "$sysbox" -eq 1 ]]; then
+  docker_args+=(--runtime=sysbox-runc)
+else
+  docker_args+=(--privileged)
+fi
 
 if [[ "$host_network" -eq 1 ]]; then
   docker_args+=(--network host)

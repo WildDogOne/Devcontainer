@@ -153,8 +153,9 @@ run` time, not baked into a compose file.
 
 By default `run.sh` runs the container on Docker's normal bridge network - isolated
 from the host's network namespace, same as any other `docker run` without `--network`.
-`--privileged` is still always on, for Docker-in-Docker (anything run via the inner
-`dockerd`, e.g. `docker compose` inside a project).
+`--privileged` is on by default, for Docker-in-Docker (anything run via the inner
+`dockerd`, e.g. `docker compose` inside a project) - see
+[below](#privileged-vs---sysbox) for the `--sysbox` alternative.
 
 Pass `--host-network` (`run.sh --host-network`, or `--host-network --continue`, etc. -
 order relative to other args doesn't matter, it's stripped out before anything is
@@ -239,6 +240,89 @@ you trust everything that will run inside this container.
 ```sh
 run.sh --allow-container
 ```
+
+## `--privileged` vs `--sysbox`
+
+`--privileged` (the default) is a blunt instrument: it disables essentially every
+container security boundary Docker offers, not just the ones the nested `dockerd`
+actually needs. A process that escapes the nested `dockerd` inside a `--privileged`
+container has a well-trodden path to full root on the host.
+
+Pass `run.sh --sysbox` to use the
+[sysbox-runc](https://github.com/nestybox/sysbox) OCI runtime instead of `--privileged`.
+Sysbox gives the container real user-namespace isolation - root inside the container maps
+to an unprivileged UID on the host - while still letting the nested `dockerd` (and other
+things that normally demand `--privileged`, like systemd) run unmodified. `run.sh` only
+*selects* the runtime (`--runtime=sysbox-runc`); it doesn't install it, and refuses to
+start with a clear error if the host's Docker daemon doesn't have `sysbox-runc`
+registered (`docker info` doesn't list it).
+
+```sh
+run.sh --sysbox
+```
+
+Orthogonal to `--allow-container`: sysbox's isolation improves the nested `dockerd`
+`--allow-container` bypasses, so combining the two flags is harmless but pointless -
+there is no nested `dockerd` left for sysbox to isolate.
+
+### Installing sysbox on the host
+
+This is a one-time, per-host setup - `run.sh` never installs or configures sysbox itself,
+it only passes `--runtime=sysbox-runc` once it's there. Docker must already be a native
+install (not the `docker` snap) with systemd as the host's process manager.
+
+**Ubuntu / Debian** - sysbox publishes an official `.deb`:
+
+```sh
+# Check https://github.com/nestybox/sysbox/releases for the current version/checksum first.
+wget https://github.com/nestybox/sysbox/releases/download/v0.7.1/sysbox-ce_0.7.1.linux_amd64.deb
+sha256sum sysbox-ce_0.7.1.linux_amd64.deb   # compare against the checksum on the release page
+
+docker rm -f $(docker ps -aq)   # recommended: the installer may restart Docker
+sudo apt-get install jq         # used by the installer
+sudo apt-get install ./sysbox-ce_0.7.1.linux_amd64.deb
+
+systemctl status sysbox         # confirm sysbox-mgr/sysbox-fs/sysbox-runc are up
+```
+
+The package registers `sysbox-runc` in `/etc/docker/daemon.json` and enables/starts the
+`sysbox` systemd unit for you. Kernel >= 5.19 needs nothing extra; on older kernels the
+installer may also need `shiftfs` - see sysbox's
+[install guide](https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md)
+if it complains.
+
+**Arch Linux** - no official package (Arch isn't in sysbox's supported-distro list), but
+a community AUR package tracks upstream releases:
+
+```sh
+yay -S sysbox-ce-bin   # or: paru -S sysbox-ce-bin
+```
+
+The AUR package only installs the binaries and systemd units; you still have to wire it
+up to Docker yourself. Add the runtime to `/etc/docker/daemon.json` (merge with any
+existing content rather than overwriting it), then restart both services:
+
+```json
+{
+  "runtimes": {
+    "sysbox-runc": {
+      "path": "/usr/bin/sysbox-runc",
+      "runtimeArgs": ["--no-kernel-check"]
+    }
+  }
+}
+```
+
+```sh
+sudo systemctl enable --now sysbox
+sudo systemctl restart docker
+```
+
+`--no-kernel-check` is there because Arch's rolling kernel isn't one sysbox recognizes as
+pre-validated - functionally it behaves the same as the officially-supported distros as
+long as the kernel is reasonably recent (>= 5.19 needs no `shiftfs`, matching the Ubuntu
+requirement above). Since Arch isn't officially supported, treat `--sysbox` there as
+best-effort: verify it with `run.sh --sysbox bash` before relying on it for anything.
 
 ## Windows (PowerShell + Docker Desktop)
 
