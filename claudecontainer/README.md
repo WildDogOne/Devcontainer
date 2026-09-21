@@ -36,6 +36,13 @@ Extra arguments starting with `-` are forwarded to `claude` itself, e.g.
 current directory. Anything else overrides the default `claude` command entirely, e.g.
 `run.sh bash` for a plain shell.
 
+This means the leading `--` matters even for flags that take a value, e.g. Claude Code's
+`--remote-control [name]` - `run.sh --remote-control` works (forwarded to `claude`), but
+`run.sh remote-control` (no dashes) does not: `run.sh` has no way to tell that apart from
+a full command override like `run.sh bash`, so it tries to exec `remote-control` itself
+as the container's command and fails with a cryptic `sudo: remote-control: command not
+found`. If you see that error, check you didn't drop the leading dashes off a claude flag.
+
 Run `run.sh --help` / `run.ps1 --help` any time for a summary of the script's own flags
 plus this machine's resolved config (mounts, network mode, whether
 `run.local.sh`/`run.local.ps1` is picked up) - handy as a quick sanity check without
