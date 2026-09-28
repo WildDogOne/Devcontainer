@@ -3,3 +3,7 @@
 run.local.sh
 run.local.ps1
 allowed-domains.txt
+
+# Personal extra build-time dependencies (custom MCP servers, extra packages, etc.) -
+# see extra-setup.sh.example.
+extra-setup.sh

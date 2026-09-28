@@ -5,6 +5,12 @@
 # (see entrypoint.sh/run.sh).
 set -eu
 cd "$(dirname "$0")"
+
+# extra-setup.sh is gitignored (personal, like allowed-domains.txt - see
+# extra-setup.sh.example) and Dockerfile COPYs it unconditionally, so seed a no-op copy
+# here if it's missing rather than letting a fresh clone fail to build.
+[ -f extra-setup.sh ] || cp extra-setup.sh.example extra-setup.sh
+
 docker build --no-cache -t  claudecontainer:latest .
 
 # --no-cache means every rebuild produces a brand-new image and dangles whatever

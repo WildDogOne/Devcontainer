@@ -379,6 +379,39 @@ looking for a `.venv/bin/activate` and sources it automatically
 `.venv` for you - create one yourself (`python3.14 -m venv .venv`) if a project doesn't
 already have one.
 
+## Extra dependencies (custom MCP servers, etc.)
+
+The image ships with what Claude Code itself and the MCP servers documented here need
+(Node, Python 3.14, `uv`/`uvx`, `bun`, `gh`, ...), but a custom MCP server or other tool
+you add on your end may need something the base image doesn't have - an apt package, a
+global npm/uv install, or a curl-installed binary.
+
+Copy `extra-setup.sh.example` to `extra-setup.sh` (gitignored, personal - like
+`allowed-domains.txt`) and add whatever your setup needs there; it's copied into the
+image and run as root near the end of the build, after Node/Python/uv/bun are already
+set up. `build.sh`/`build.ps1` seed a no-op copy from the `.example` automatically if
+it's missing, so a fresh clone still builds without it.
+
+```sh
+# extra-setup.sh, e.g.:
+# apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# npm install -g some-mcp-server-package
+# uv tool install some-python-mcp-server
+
+cp extra-setup.sh.example extra-setup.sh
+$EDITOR extra-setup.sh
+./build.sh
+```
+
+This only covers *build-time* installation. If the tool also needs network access at
+*runtime* (e.g. it calls out to an API), add its domain(s) to `allowed-domains.txt` too
+(see [above](#networking---privileged-and-the-egress-allowlist)).
+
+MCP server *configuration* itself doesn't need any of this - `~/.claude.json` and
+`~/.claude` (including installed plugins) are bind-mounted in from the host by `run.sh`,
+so servers you've already registered on the host work as-is, as long as whatever they
+exec is either already in the image or installed here.
+
 ## No inbound SSH / no JetBrains Gateway
 
 This container no longer runs sshd - it has no listening port and nothing reaches it
