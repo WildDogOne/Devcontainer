@@ -99,7 +99,8 @@ while [[ $# -gt 0 ]]; do
     *) args+=("$1"); shift ;;
   esac
 done
-set -- "${args[@]}"
+# ${args[@]+...} guard: macOS's bash 3.2 treats an empty array as unbound under set -u.
+set -- ${args[@]+"${args[@]}"}
 
 if [[ -n "$allow_list" && "$allow_internet" -eq 1 ]]; then
   echo "run.sh: --allow-list and --allow-internet are mutually exclusive" >&2
