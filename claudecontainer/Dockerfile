@@ -135,9 +135,9 @@ RUN curl -fsSL https://bun.sh/install | env BUN_INSTALL=/usr/local bash
 
 # Optional per-machine extra dependencies (custom MCP servers' own runtime
 # requirements, extra apt/npm/uv packages, etc.) - see extra-setup.sh.example.
-# extra-setup.sh itself is gitignored (personal, like allowed-domains.txt); build.sh /
-# build.ps1 seed a no-op copy from the .example if it's missing, so a fresh clone still
-# builds with nothing extra installed. Runs as root, after Node/Python/uv/bun are
+# extra-setup.sh itself is gitignored (personal, like allowed-domains.txt); build.sh
+# seeds a no-op copy from the .example if it's missing, so a fresh clone still builds
+# with nothing extra installed. Runs as root, after Node/Python/uv/bun are
 # already on PATH, in the same unrestricted build-time network as the rest of this file.
 COPY extra-setup.sh /tmp/extra-setup.sh
 RUN chmod +x /tmp/extra-setup.sh && /tmp/extra-setup.sh && rm /tmp/extra-setup.sh

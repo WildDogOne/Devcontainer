@@ -89,14 +89,30 @@ export HOME="${HOST_HOME:-/home/dev}"
 mkdir -p "$HOME"
 chown dev:dev "$HOME"
 
+# run.sh (without --allow-config) mounts the host's ~/.claude.json read-only here instead
+# of at $HOME/.claude.json. Claude Code rewrites that file on every start, so a plain :ro
+# mount would break it - copy it into the container's writable layer instead: claude
+# can change it freely, but nothing reaches the host and it's discarded with the
+# container (--rm).
+if [ -f /etc/claudecontainer/claude.json.host ]; then
+  cp /etc/claudecontainer/claude.json.host "$HOME/.claude.json"
+  chown dev:dev "$HOME/.claude.json"
+  chmod 600 "$HOME/.claude.json"
+fi
+
+# claude starts in auto permission mode here by default - the sandbox (no host access
+# beyond the mounts, read-only config, egress allowlist) is what makes that acceptable,
+# so it's set here rather than in ~/.claude/settings.json, which would also apply to
+# `claude` run natively on the host. Forwarded args come after it, so e.g.
+# `run.sh --permission-mode manual` still overrides it (last one wins).
 if [ "$#" -eq 0 ]; then
-  set -- zsh -lc claude
+  set -- zsh -lc 'exec claude --permission-mode auto'
 elif [ "${1#-}" != "$1" ]; then
   # First arg is a flag (e.g. --continue, --resume) rather than a full command
   # override - forward it to `claude` instead of trying to exec a flag as a program.
   # `zsh -lc 'script' zsh "$@"` forwards the remaining args as the script's own $@
   # (same positional-forwarding trick as the sudo call below would use for su).
-  set -- zsh -lc 'exec claude "$@"' zsh "$@"
+  set -- zsh -lc 'exec claude --permission-mode auto "$@"' zsh "$@"
 fi
 
 # sudo (not `su -l`): su's login-session setup cd's to the target user's home as part

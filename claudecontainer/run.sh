@@ -55,6 +55,17 @@
 # access, at the cost of a host-side dependency beyond plain Docker. Irrelevant if
 # combined with --allow-container, since that path skips the nested dockerd entirely -
 # there's nothing left for sysbox's isolation to apply to.
+#
+# `--allow-config` (consumed here, not forwarded on) lets this session write to your
+# Claude Code *configuration*. By default it can't: ~/.claude itself stays read-write
+# (transcripts, history, todos, OAuth token refreshes in .credentials.json - Claude Code
+# breaks without them), but the config entries listed in CLAUDE_CONFIG_RO_PATHS below are
+# bind-mounted read-only on top of it, and ~/.claude.json is mounted read-only at a
+# staging path that entrypoint.sh copies into the container's own $HOME (Claude Code
+# rewrites that file on every start, so it must stay writable - edits just never reach
+# the host). The point: settings.json hooks, MCP servers, plugins, agents, commands and
+# skills all run with full access on the HOST the next time you run `claude` natively,
+# so a session that gets talked into editing them could escape the sandbox.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +75,7 @@ show_help=0
 allow_list=""
 allow_internet=0
 allow_container=0
+allow_config=0
 sysbox=0
 cli_mounts=()
 args=()
@@ -73,6 +85,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help) show_help=1; shift ;;
     --allow-internet) allow_internet=1; shift ;;
     --allow-container) allow_container=1; shift ;;
+    --allow-config) allow_config=1; shift ;;
     --sysbox) sysbox=1; shift ;;
     --allow-list)
       if [[ $# -lt 2 ]]; then
@@ -126,6 +139,16 @@ if [[ "$sysbox" -eq 1 ]] && ! docker info --format '{{json .Runtimes}}' 2>/dev/n
   exit 1
 fi
 
+# Entries under ~/.claude mounted read-only unless --allow-config is passed - everything
+# here can make the HOST's own `claude` run something or behave differently. Missing
+# entries are skipped (docker would otherwise create them as empty dirs on the host).
+# Extend it from run.local.sh for anything else your settings point at, e.g. a
+# statusline script: CLAUDE_CONFIG_RO_PATHS+=(statusline.sh)
+CLAUDE_CONFIG_RO_PATHS=(
+  settings.json settings.local.json CLAUDE.md keybindings.json
+  agents commands skills hooks plugins output-styles
+)
+
 # Personal, per-machine mounts beyond $PWD - see run.local.sh.example. Gitignored and
 # entirely optional: nothing breaks if it's missing, EXTRA_MOUNTS just stays empty.
 EXTRA_MOUNTS=()
@@ -136,7 +159,7 @@ fi
 if [[ "$show_help" -eq 1 ]]; then
   cat <<EOF
 Usage: run.sh [--host-network] [--allow-list <path> | --allow-internet] [--allow-container]
-              [--sysbox] [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
+              [--allow-config] [--sysbox] [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
 
 Launches a fresh, disposable claudecontainer scoped to \$PWD. Only \$PWD and your
 Claude Code login are mounted in; the container is removed on exit (--rm).
@@ -164,6 +187,12 @@ Claude Code login are mounted in; the container is removed on exit (--rm).
                     siblings, not nested inside the sandbox - host-visible, not cleaned up
                     when this container exits. OFF by default: this is root-equivalent
                     access to the host. Consumed here, never forwarded to docker/claude.
+  --allow-config    Let this session change your Claude Code config on the host
+                    (~/.claude.json and settings/hooks/plugins/agents/commands/skills
+                    under ~/.claude). OFF by default: those are read-only, and in-session
+                    edits to ~/.claude.json are discarded on exit. Session state
+                    (transcripts, history, login) stays writable either way. Consumed
+                    here, never forwarded to docker/claude.
   --sysbox          Use the sysbox-runc OCI runtime instead of --privileged, for real
                     user-namespace isolation around the nested dockerd. Must already be
                     installed and registered with this host's Docker daemon - see
@@ -180,11 +209,21 @@ Effective config on this machine:
   Runtime:        $([[ "$sysbox" -eq 1 ]] && echo "sysbox-runc (--sysbox passed; no --privileged)" || echo "--privileged (default; pass --sysbox to use sysbox-runc instead, if installed)")
   Allowlist:      $([[ "$allow_internet" -eq 1 ]] && echo "DISABLED (--allow-internet passed - any host reachable via the proxy)" || { [[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)"; })
   Docker socket:  $([[ "$allow_container" -eq 1 ]] && echo "HOST /var/run/docker.sock (--allow-container passed - root-equivalent host access)" || echo "sandboxed nested dockerd only (default; pass --allow-container to use the host daemon)")
+  Claude config:  $([[ "$allow_config" -eq 1 ]] && echo "WRITABLE (--allow-config passed - edits persist on the host)" || echo "read-only (default; pass --allow-config to let claude change it)")
   Mounts:
     $PWD -> $PWD
     $HOME/.claude -> $HOME/.claude (dev's \$HOME is set to match, see README.md)
-    $HOME/.claude.json -> $HOME/.claude.json
 EOF
+  if [[ "$allow_config" -eq 1 ]]; then
+    echo "    $HOME/.claude.json -> $HOME/.claude.json"
+  else
+    for entry in "${CLAUDE_CONFIG_RO_PATHS[@]}"; do
+      if [[ -e "$HOME/.claude/$entry" ]]; then
+        echo "    $HOME/.claude/$entry -> $HOME/.claude/$entry (ro)"
+      fi
+    done
+    echo "    $HOME/.claude.json -> copied in from a ro mount (edits discarded on exit)"
+  fi
   if [[ -n "${SSH_AUTH_SOCK:-}" && -S "${SSH_AUTH_SOCK}" ]]; then
     echo "    $SSH_AUTH_SOCK -> $SSH_AUTH_SOCK (SSH_AUTH_SOCK, agent forwarding)"
   else
@@ -220,9 +259,23 @@ docker_args=(
   -v "$PWD:$PWD"
   -w "$PWD"
   -v "$HOME/.claude:$HOME/.claude"
-  -v "$HOME/.claude.json:$HOME/.claude.json"
   -e "HOST_HOME=$HOME"
 )
+
+# Config is read-only unless --allow-config - see the header comment. The per-entry ro
+# mounts nest inside the rw ~/.claude mount above (docker mounts parents first).
+# ~/.claude.json can't just be :ro since Claude Code rewrites it on every start, so it's
+# staged read-only and entrypoint.sh copies it into the container's writable layer.
+if [[ "$allow_config" -eq 1 ]]; then
+  docker_args+=(-v "$HOME/.claude.json:$HOME/.claude.json")
+else
+  for entry in "${CLAUDE_CONFIG_RO_PATHS[@]}"; do
+    if [[ -e "$HOME/.claude/$entry" ]]; then
+      docker_args+=(-v "$HOME/.claude/$entry:$HOME/.claude/$entry:ro")
+    fi
+  done
+  docker_args+=(-v "$HOME/.claude.json:/etc/claudecontainer/claude.json.host:ro")
+fi
 
 # --privileged is the default, needed for the inner dockerd (Docker-in-Docker). --sysbox
 # swaps it for the sysbox-runc runtime instead, which gives that same nested dockerd real

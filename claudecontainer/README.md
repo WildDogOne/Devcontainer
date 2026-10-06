@@ -46,6 +46,7 @@ with `--no-cache` and prunes the dangling images it leaves behind.
 ```sh
 run.sh                    # interactive claude session in $PWD
 run.sh --continue         # args starting with `-` are forwarded to claude
+run.sh --permission-mode manual   # claude starts in auto mode by default; this overrides it
 run.sh bash               # anything else replaces the claude command entirely
 run.sh --help             # flags + this machine's resolved mounts/network/runtime
 ```
@@ -61,6 +62,7 @@ run.sh --help             # flags + this machine's resolved mounts/network/runti
 | `--host-network`                         | Share the host's network namespace instead of the bridge network. For VPNs that block the bridge.                                   |
 | `--allow-container`                      | Mount the **host's** Docker socket instead of running a nested `dockerd`. Root-equivalent, see [below](#docker-inside-the-sandbox). |
 | `--sysbox`                               | Use the `sysbox-runc` runtime instead of `--privileged`. See [docs/sysbox.md](docs/sysbox.md).                                      |
+| `--allow-config`                         | Let Claude Code change your config on the host. Read-only by default, see [below](#what-the-container-can-see).                     |
 
 ```sh
 run.sh --mount ~/data --mount ~/models:/models:ro --continue
@@ -114,7 +116,7 @@ flowchart LR
     runsh -- " docker run " --> dockerd_host
     dockerd_host -- " starts from image " --> pid1
     pwd -. " bind mount rw, same path " .-> devcmd
-    claudecfg -. " bind mount rw " .-> devcmd
+    claudecfg -. " bind mount, config ro " .-> devcmd
     ssh -. " bind mount " .-> devcmd
     extramounts -. " bind mount " .-> devcmd
     allowoverride -. " ro mount, cp over allowlist " .-> squid
@@ -141,7 +143,7 @@ flowchart LR
 | Host path                        | Container path        | Why                                                              |
 |----------------------------------|-----------------------|------------------------------------------------------------------|
 | `$PWD`                           | same path, read-write | Your project. Git and absolute paths behave as on the host.      |
-| `~/.claude`, `~/.claude.json`    | same path, read-write | Reuses your Claude Code login, settings, plugins and MCP config. |
+| `~/.claude`, `~/.claude.json`    | same path, config ro  | Reuses your Claude Code login, settings, plugins and MCP config. |
 | `$SSH_AUTH_SOCK` (if set)        | same path             | Agent-forwarded git-over-SSH. No keys are copied in.             |
 | `EXTRA_MOUNTS` in `run.local.sh` | as configured         | Standing mounts for this machine.                                |
 | `--mount` arguments              | as given              | One-off mounts for a single session.                             |
@@ -150,6 +152,25 @@ The Claude config is mounted at your host's `$HOME` path, not `/home/dev`, and
 `entrypoint.sh` sets `dev`'s `$HOME` to match. Claude Code records absolute plugin
 paths based on `$HOME`. If the two didn't match, plugins you installed on the host
 would fail with `cache-miss` on `/reload-plugins`.
+
+By default the container can't change your Claude Code **configuration**. Hooks in
+`settings.json`, MCP servers in `~/.claude.json`, plugins, agents, commands and skills
+all run with full access on the host the next time you use `claude` natively. A session
+that edits them could therefore escape the sandbox. `~/.claude` stays read-write
+because Claude Code needs it for transcripts, history and login token refreshes. On
+top of it, `run.sh` mounts `settings.json`, `settings.local.json`, `CLAUDE.md`,
+`keybindings.json`, `agents/`, `commands/`, `skills/`, `hooks/`, `plugins/` and
+`output-styles/` read-only (each one only if it exists). `~/.claude.json` is copied into
+the container instead, because Claude Code rewrites it on every start. Changes to it
+inside the session are thrown away when the container exits. So with the default:
+
+- changing settings, installing plugins or updating marketplaces fails inside the
+  container;
+- trust prompts and similar state stored in `~/.claude.json` reset every session.
+
+Pass `--allow-config` to mount all of it read-write, as before. If your settings point
+at other files under `~/.claude` (for example a statusline script), add them in
+`run.local.sh` with `CLAUDE_CONFIG_RO_PATHS+=(statusline.sh)`.
 
 For mounts you need in every session on this machine, copy `run.local.sh.example` to
 `run.local.sh` (gitignored) and fill in `EXTRA_MOUNTS`. Each extra mount widens the
