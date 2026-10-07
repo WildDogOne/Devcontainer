@@ -12,8 +12,10 @@ touch a file baked into the image - run `./build.sh` before the change takes eff
   host. Without it, config is now read-only (see Changed).
 - `dev` inside the container now takes the invoking host user's UID/GID at startup
   (`run.sh` passes `HOST_UID`/`HOST_GID`, `entrypoint.sh` remaps), so mounted files
-  stay owned by the host user even when their UID isn't 1000. Skipped for host root and
-  rootless Docker. **rebuild**
+  stay owned by the host user even when their UID isn't 1000. Skipped for host root,
+  rootless Docker and Podman. Override with `CONTAINER_UID`/`CONTAINER_GID` in
+  `run.local.sh` (or the environment), or `CONTAINER_UID=off`; `run.sh --help` shows
+  the result. **rebuild**
 - README: first-run instructions for hosts without Claude Code installed (pre-create
   `~/.claude`/`~/.claude.json`, log in once with `--allow-config`).
 

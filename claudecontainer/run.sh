@@ -152,8 +152,45 @@ CLAUDE_CONFIG_RO_PATHS=(
 # Personal, per-machine mounts beyond $PWD - see run.local.sh.example. Gitignored and
 # entirely optional: nothing breaks if it's missing, EXTRA_MOUNTS just stays empty.
 EXTRA_MOUNTS=()
+# Manual override for the UID/GID remap below. Seeded from the environment so a one-off
+# `CONTAINER_UID=1234 run.sh` works; run.local.sh can set them permanently.
+CONTAINER_UID="${CONTAINER_UID:-}"
+CONTAINER_GID="${CONTAINER_GID:-}"
 if [[ -f "$script_dir/run.local.sh" ]]; then
   . "$script_dir/run.local.sh"
+fi
+
+# entrypoint.sh remaps dev's UID/GID (1000 in the image) to remap_uid/remap_gid, so files
+# written to the bind mounts stay owned by the host user whatever their UID. Automatic
+# unless CONTAINER_UID is set (a number, or "off"). Auto skips root (dev would become
+# UID 0) and rootless Docker, where container UID 0 already is the host user and the
+# host UID would land on an unrelated subordinate UID instead. Also Podman, which is
+# typically rootless the same way but doesn't report it in Docker's SecurityOptions:
+# `docker version` names "Podman Engine" both when `docker` is Podman's shim and when
+# the Docker CLI talks to a Podman socket.
+remap_uid=""
+remap_gid=""
+if [[ "$CONTAINER_UID" == off ]]; then
+  remap_desc="off (CONTAINER_UID=off)"
+elif [[ -n "$CONTAINER_UID" ]]; then
+  remap_uid="$CONTAINER_UID"
+  remap_gid="${CONTAINER_GID:-$(id -g)}"
+  if ! [[ "$remap_uid" =~ ^[0-9]+$ && "$remap_gid" =~ ^[0-9]+$ ]] \
+    || [[ "$remap_uid" -eq 0 || "$remap_gid" -eq 0 ]]; then
+    echo "run.sh: CONTAINER_UID/CONTAINER_GID must be non-zero numbers, or CONTAINER_UID=off (got '$remap_uid'/'$remap_gid')" >&2
+    exit 1
+  fi
+  remap_desc="$remap_uid:$remap_gid (set by CONTAINER_UID/CONTAINER_GID)"
+elif [[ "$(id -u)" -eq 0 ]]; then
+  remap_desc="off (running as root)"
+elif docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+  remap_desc="off (rootless Docker detected)"
+elif docker version 2>/dev/null | grep -qi podman; then
+  remap_desc="off (Podman detected)"
+else
+  remap_uid="$(id -u)"
+  remap_gid="$(id -g)"
+  remap_desc="$remap_uid:$remap_gid (your host user)"
 fi
 
 if [[ "$show_help" -eq 1 ]]; then
@@ -210,6 +247,7 @@ Effective config on this machine:
   Allowlist:      $([[ "$allow_internet" -eq 1 ]] && echo "DISABLED (--allow-internet passed - any host reachable via the proxy)" || { [[ -n "$allow_list" ]] && echo "$allow_list (--allow-list passed, overrides image default)" || echo "image default (allowed-domains.txt baked in at build; pass --allow-list to override)"; })
   Docker socket:  $([[ "$allow_container" -eq 1 ]] && echo "HOST /var/run/docker.sock (--allow-container passed - root-equivalent host access)" || echo "sandboxed nested dockerd only (default; pass --allow-container to use the host daemon)")
   Claude config:  $([[ "$allow_config" -eq 1 ]] && echo "WRITABLE (--allow-config passed - edits persist on the host)" || echo "read-only (default; pass --allow-config to let claude change it)")
+  dev UID:GID:    $remap_desc
   Mounts:
     $PWD -> $PWD
     $HOME/.claude -> $HOME/.claude (dev's \$HOME is set to match, see README.md)
@@ -262,13 +300,9 @@ docker_args=(
   -e "HOST_HOME=$HOME"
 )
 
-# entrypoint.sh remaps dev's UID/GID (1000 in the image) to these, so files written to
-# the bind mounts stay owned by the invoking host user whatever their UID. Skipped for
-# root (dev would become UID 0) and for rootless Docker, where container UID 0 already
-# is the host user and the host UID would land on an unrelated subordinate UID instead.
-host_uid="$(id -u)"
-if [[ "$host_uid" -ne 0 ]] && ! docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
-  docker_args+=(-e "HOST_UID=$host_uid" -e "HOST_GID=$(id -g)")
+# See the remap_uid block near the top.
+if [[ -n "$remap_uid" ]]; then
+  docker_args+=(-e "HOST_UID=$remap_uid" -e "HOST_GID=$remap_gid")
 fi
 
 # Config is read-only unless --allow-config - see the header comment. The per-entry ro

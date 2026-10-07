@@ -11,3 +11,11 @@
 EXTRA_MOUNTS=(
   # "$HOME/Obsidian:$HOME/Obsidian"
 )
+
+# UID/GID that dev takes inside the container, so files it writes to the mounts are
+# owned by that user on the host. Unset = automatic: your own UID/GID, or no remap
+# (dev stays 1000:1000) as root, under rootless Docker or under Podman. Set a number
+# to override the detection, or "off" to never remap. CONTAINER_GID defaults to your
+# own GID and only applies together with CONTAINER_UID.
+# CONTAINER_UID=1234
+# CONTAINER_GID=1234

@@ -182,7 +182,10 @@ flowchart LR
 Inside the container you're the user `dev`, but with your host UID and GID: `run.sh`
 passes them in and `entrypoint.sh` remaps `dev` at startup. Files created in mounted
 directories stay owned by you on the host. The remap is skipped when you run as root,
-and under rootless Docker, which already maps the container's root to your user.
+under rootless Docker and under Podman, which already map the container's root to
+your user. To pick the IDs yourself, set `CONTAINER_UID` (and optionally
+`CONTAINER_GID`) in `run.local.sh` or the environment, or `CONTAINER_UID=off` to keep
+`dev` at 1000:1000. `run.sh --help` shows which IDs a session will use.
 
 The Claude config is mounted at your host's `$HOME` path, not `/home/dev`, and
 `entrypoint.sh` sets `dev`'s `$HOME` to match. Claude Code records absolute plugin
