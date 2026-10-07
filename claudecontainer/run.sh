@@ -262,6 +262,15 @@ docker_args=(
   -e "HOST_HOME=$HOME"
 )
 
+# entrypoint.sh remaps dev's UID/GID (1000 in the image) to these, so files written to
+# the bind mounts stay owned by the invoking host user whatever their UID. Skipped for
+# root (dev would become UID 0) and for rootless Docker, where container UID 0 already
+# is the host user and the host UID would land on an unrelated subordinate UID instead.
+host_uid="$(id -u)"
+if [[ "$host_uid" -ne 0 ]] && ! docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+  docker_args+=(-e "HOST_UID=$host_uid" -e "HOST_GID=$(id -g)")
+fi
+
 # Config is read-only unless --allow-config - see the header comment. The per-entry ro
 # mounts nest inside the rw ~/.claude mount above (docker mounts parents first).
 # ~/.claude.json can't just be :ro since Claude Code rewrites it on every start, so it's

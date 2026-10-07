@@ -40,13 +40,31 @@ if [ "${SQUID_ALLOW_INTERNET:-0}" = "1" ]; then
   sed -i 's/^http_access allow allowed_dst$/http_access allow all/' /etc/squid/squid.conf
 fi
 
+# run.sh passes the invoking host user's UID/GID - remap dev (1000:1000 in the image) to
+# them so files written to the bind mounts ($PWD, ~/.claude, --mount) stay owned by that
+# user on the host. Has to happen before anything below chowns to dev. -o: the host IDs
+# may already be taken inside the image (e.g. GID 100 "users", macOS's GID 20) - a
+# shared numeric ID is harmless here, failing to start isn't. usermod also re-chowns
+# /home/dev (the only dev-owned path in the image), but only its UID - hence the
+# explicit chown for the GID. UID 0 is refused outright (run.sh never sends it): dev
+# would silently become root.
+if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ] && [ "$HOST_UID" != 0 ]; then
+  if [ "$HOST_GID" != "$(id -g dev)" ]; then
+    groupmod -o -g "$HOST_GID" dev
+  fi
+  if [ "$HOST_UID" != "$(id -u dev)" ]; then
+    usermod -o -u "$HOST_UID" dev
+  fi
+  chown -R dev:dev /home/dev
+fi
+
 nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &
 sleep 1
 
 # run.sh --allow-container bind-mounts the HOST's own docker.sock at this same path,
 # so starting our own nested dockerd here would just fail to bind it. Instead, give dev
 # access to the mounted socket by joining the group that owns it on the host - dev's own
-# UID/GID (1000) has no relation to whatever GID owns the socket on an arbitrary host.
+# UID/GID has no relation to whatever GID owns the socket on an arbitrary host.
 # The docker *client* (installed for the nested case) works unmodified against either
 # socket; only the daemon side differs.
 if [ "${ALLOW_CONTAINER:-0}" = "1" ]; then
@@ -84,7 +102,7 @@ git config --system https.proxy "http://127.0.0.1:3128"
 # (Docker creates missing mount-point parents in the container's own writable layer,
 # not on the host), owned by root by default - chown just the top level so dev can
 # still write new dotfiles/caches directly under it; the mounts underneath already
-# have host-matching ownership (UID 1000) and don't need touching.
+# have host-matching ownership (dev is remapped to the host UID above) and don't need touching.
 export HOME="${HOST_HOME:-/home/dev}"
 mkdir -p "$HOME"
 chown dev:dev "$HOME"

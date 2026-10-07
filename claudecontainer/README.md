@@ -179,6 +179,11 @@ flowchart LR
 | `EXTRA_MOUNTS` in `run.local.sh` | as configured         | Standing mounts for this machine.                                |
 | `--mount` arguments              | as given              | One-off mounts for a single session.                             |
 
+Inside the container you're the user `dev`, but with your host UID and GID: `run.sh`
+passes them in and `entrypoint.sh` remaps `dev` at startup. Files created in mounted
+directories stay owned by you on the host. The remap is skipped when you run as root,
+and under rootless Docker, which already maps the container's root to your user.
+
 The Claude config is mounted at your host's `$HOME` path, not `/home/dev`, and
 `entrypoint.sh` sets `dev`'s `$HOME` to match. Claude Code records absolute plugin
 paths based on `$HOME`. If the two didn't match, plugins you installed on the host

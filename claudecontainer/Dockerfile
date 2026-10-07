@@ -97,8 +97,9 @@ EOF
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x  /usr/local/bin/entrypoint.sh
 
-# Create a non-root "dev" user matching UID/GID 1000 so files created in the
-# container stay writable on the host. docker.io's postinst already creates the
+# Create a non-root "dev" user at UID/GID 1000. entrypoint.sh remaps it to the
+# invoking host user's UID/GID at startup (passed in by run.sh), so files created in
+# the container stay owned by that user on the host. docker.io's postinst already creates the
 # "docker" group. Ubuntu's base image already ships a default "ubuntu" user/group
 # at 1000:1000, so it has to go first to free up that UID/GID.
 ARG USERNAME=dev
