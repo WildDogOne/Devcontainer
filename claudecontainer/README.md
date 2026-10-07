@@ -29,6 +29,37 @@ cd ~/path/to/some-project
 /path/to/claudecontainer/run.sh                       # drops you into `claude`
 ```
 
+### First run without Claude Code on the host
+
+Claude Code is installed in the image, so you don't need it on the host. `run.sh`
+mounts your login from `~/.claude` and `~/.claude.json`. If either is missing, Docker
+creates it as an empty root-owned *directory*, and the login fails. Create both
+yourself before the first run:
+
+```sh
+mkdir -p ~/.claude
+[ -e ~/.claude.json ] || echo '{}' > ~/.claude.json
+```
+
+Then log in once with `--allow-config`:
+
+```sh
+/path/to/claudecontainer/run.sh --allow-config
+```
+
+Claude Code walks you through onboarding and prints a login URL. Open it in a browser
+on the host and paste the code it gives you back into the terminal. The login token is
+saved to `~/.claude/.credentials.json`, which persists in every mode. Onboarding state
+and account details go to `~/.claude.json`, which is only written back with
+`--allow-config`. Without it you'd go through onboarding again on every run. After
+this, use plain `run.sh`.
+
+Later configuration changes, like settings, plugins or MCP servers, also need
+`--allow-config`, because the container is the only place you run `claude`. See
+[What the container can see](#what-the-container-can-see).
+
+### Shell alias
+
 To launch it from any directory, add an alias to your host shell config (`~/.bashrc` or
 `~/.zshrc`; the same line works in fish):
 
@@ -252,6 +283,10 @@ parents, and activates the first one it finds. Nothing creates the venv for you:
 - **`sudo: remote-control: command not found`** (or similar): a `claude` flag was passed
   without its leading dashes. `run.sh remote-control` is treated as a command to run
   instead of `claude`. Use `run.sh --remote-control`.
+- **Login fails, or `~/.claude.json` is a directory:** `run.sh` ran before those paths
+  existed, so Docker created them as root. Repair with
+  `sudo rmdir ~/.claude.json; sudo chown -R "$USER": ~/.claude`, then follow
+  [First run](#first-run-without-claude-code-on-the-host).
 - **A change to the image has no effect:** rebuild with `./build.sh`.
 - **Build fails on `COPY allowed-domains.txt`:** run
   `cp allowed-domains.txt.example allowed-domains.txt`.

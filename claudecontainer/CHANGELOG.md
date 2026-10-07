@@ -10,6 +10,8 @@ touch a file baked into the image - run `./build.sh` before the change takes eff
 
 - `run.sh --allow-config`: lets a session write Claude Code's configuration back to the
   host. Without it, config is now read-only (see Changed).
+- README: first-run instructions for hosts without Claude Code installed (pre-create
+  `~/.claude`/`~/.claude.json`, log in once with `--allow-config`).
 
 ### Changed
 
