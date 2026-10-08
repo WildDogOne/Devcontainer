@@ -25,8 +25,7 @@ There's no persistent container, no listening port and no whole-home mount.
 ## Quick start
 
 ```sh
-cp allowed-domains.txt.example allowed-domains.txt   # required: the build COPYs it
-./build.sh
+./build.sh             # creates allowed-domains.txt from the .example on first build
 
 cd ~/path/to/some-project
 /path/to/claudecontainer/run.sh                       # drops you into `claude`
@@ -302,8 +301,6 @@ parents, and activates the first one it finds. Nothing creates the venv for you:
   `sudo rmdir ~/.claude.json; sudo chown -R "$USER": ~/.claude`, then follow
   [First run](#first-run-without-claude-code-on-the-host).
 - **A change to the image has no effect:** rebuild with `./build.sh`.
-- **Build fails on `COPY allowed-domains.txt`:** run
-  `cp allowed-domains.txt.example allowed-domains.txt`.
 - **A download or API call is blocked:** check `/tmp/squid-access.log` inside the
   container, then use `--allow-list` or add the domain to `allowed-domains.txt`.
 - **`cache-miss` on `/reload-plugins`:** make sure you started through `run.sh`, which

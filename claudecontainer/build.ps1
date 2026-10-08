@@ -40,9 +40,12 @@ try {
   if (-not (Test-Path 'extra-setup.sh')) {
     Copy-Item 'extra-setup.sh.example' 'extra-setup.sh'
   }
+  # Same for allowed-domains.txt (also gitignored, also COPYed unconditionally) - but
+  # said out loud, since unlike a no-op extra-setup.sh this decides what the container
+  # can reach.
   if (-not (Test-Path 'allowed-domains.txt')) {
-    throw ("allowed-domains.txt is missing (the build COPYs it). Create it from the example first:`n" +
-      "  Copy-Item allowed-domains.txt.example allowed-domains.txt")
+    Copy-Item 'allowed-domains.txt.example' 'allowed-domains.txt'
+    Write-Host 'Created allowed-domains.txt from allowed-domains.txt.example - edit it to change the egress allowlist.'
   }
 
   # CRLF line endings (a checkout with core.autocrlf=true, or a file saved in Notepad)

@@ -190,7 +190,6 @@ Write-Host "$n. Start Docker Desktop once and accept its terms; wait for 'Engine
 Write-Host "   (A bare 'wsl' saying 'no installed distributions' is expected - Docker Desktop"
 Write-Host "   creates its own docker-desktop distro on first start; no Ubuntu needed.)"
 Write-Host "$n. Open a NEW PowerShell window (so PATH has git/docker), then in this folder:"; $n++
-Write-Host '     Copy-Item allowed-domains.txt.example allowed-domains.txt'
 Write-Host '     .\build.ps1'
 Write-Host "$n. From a project folder, first run (logs in, saves the login):"
 Write-Host "     $(Join-Path $PSScriptRoot 'run.ps1') --allow-config"

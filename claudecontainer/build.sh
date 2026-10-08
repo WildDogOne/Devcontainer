@@ -11,6 +11,13 @@ cd "$(dirname "$0")"
 # here if it's missing rather than letting a fresh clone fail to build.
 [ -f extra-setup.sh ] || cp extra-setup.sh.example extra-setup.sh
 
+# Same for allowed-domains.txt (also gitignored, also COPYed unconditionally) - but said
+# out loud, since unlike a no-op extra-setup.sh this decides what the container can reach.
+if [ ! -f allowed-domains.txt ]; then
+  cp allowed-domains.txt.example allowed-domains.txt
+  echo "build.sh: created allowed-domains.txt from allowed-domains.txt.example - edit it to change the egress allowlist" >&2
+fi
+
 docker build --no-cache -t  claudecontainer:latest .
 
 # --no-cache means every rebuild produces a brand-new image and dangles whatever

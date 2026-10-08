@@ -82,7 +82,6 @@ Or prefix each call with `powershell -ExecutionPolicy Bypass -File`.
 ## 3. Build
 
 ```powershell
-Copy-Item allowed-domains.txt.example allowed-domains.txt   # required: the build COPYs it
 .\build.ps1
 ```
 
@@ -95,7 +94,8 @@ Before building, `build.ps1` checks that:
 - Docker Desktop is in Linux-containers mode, not Windows-containers mode.
 
 It warns if Docker Desktop isn't using the WSL2 backend. Then it builds and prunes the
-image exactly like `build.sh`.
+image exactly like `build.sh`, including creating `allowed-domains.txt` and
+`extra-setup.sh` from their `.example` files if they don't exist yet.
 
 ## 4. Run
 

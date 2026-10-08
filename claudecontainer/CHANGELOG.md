@@ -8,6 +8,8 @@ touch a file baked into the image - run `./build.sh` before the change takes eff
 
 ### Added
 
+- `build.sh`/`build.ps1` create `allowed-domains.txt` from `allowed-domains.txt.example`
+  if it's missing (like `extra-setup.sh`), instead of failing the build.
 - Windows support through Docker Desktop (WSL2 backend), untested so far:
   `setup.ps1` installs WSL2, Docker Desktop and Git for Windows; `build.ps1` checks
   WSL2 and Docker (and starts Docker Desktop) before building; `run.ps1` is `run.sh`
