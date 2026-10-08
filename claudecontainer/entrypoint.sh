@@ -25,9 +25,10 @@ export no_proxy=$NO_PROXY
 # repointing squid.conf at the mount) keeps squid.conf static and this session-scoped:
 # the container's writable layer is discarded with it (--rm), so the image's own default
 # is untouched for every other session.
+# tr strips CRLF line endings (a list written on Windows, passed via run.ps1).
 if [ -f /etc/squid/allowed-domains.override.txt ]; then
   echo "entrypoint.sh: using --allow-list override for squid's egress allowlist" >&2
-  cp /etc/squid/allowed-domains.override.txt /etc/squid/allowed-domains.txt
+  tr -d '\r' < /etc/squid/allowed-domains.override.txt > /etc/squid/allowed-domains.txt
 fi
 
 # run.sh --allow-internet sets this to drop the domain allowlist check entirely for this

@@ -15,7 +15,10 @@ There's no persistent container, no listening port and no whole-home mount.
 
 ## Requirements
 
-- A Linux host with Docker (the image is Ubuntu 24.04-based).
+- A Linux host with Docker (the image is Ubuntu 24.04-based), or Windows 10/11 with
+  Docker Desktop on WSL2. For Windows, see [docs/windows.md](docs/windows.md):
+  `setup.ps1` installs WSL2, Docker Desktop and Git, and `build.ps1`/`run.ps1` replace
+  the shell scripts.
 - Optional: an SSH agent (`$SSH_AUTH_SOCK`) for git-over-SSH inside the container.
 - Optional: [sysbox](docs/sysbox.md) for `--sysbox`.
 
@@ -28,6 +31,9 @@ cp allowed-domains.txt.example allowed-domains.txt   # required: the build COPYs
 cd ~/path/to/some-project
 /path/to/claudecontainer/run.sh                       # drops you into `claude`
 ```
+
+On Windows, install Git first (`winget install --exact --id Git.Git`), then follow
+[docs/windows.md](docs/windows.md).
 
 ### First run without Claude Code on the host
 

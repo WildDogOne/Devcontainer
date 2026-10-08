@@ -8,6 +8,15 @@ touch a file baked into the image - run `./build.sh` before the change takes eff
 
 ### Added
 
+- Windows support through Docker Desktop (WSL2 backend), untested so far:
+  `setup.ps1` installs WSL2, Docker Desktop and Git for Windows; `build.ps1` checks
+  WSL2 and Docker (and starts Docker Desktop) before building; `run.ps1` is `run.sh`
+  with the same flags, except `--sysbox`. Per-machine config goes in `run.local.ps1`.
+  See `docs/windows.md`.
+- CRLF line endings are stripped from `entrypoint.sh`, `squid.conf`,
+  `allowed-domains.txt` and `extra-setup.sh` at build time, and from `--allow-list`
+  files at startup. `.gitattributes` keeps tracked files LF. **rebuild**
+
 - `run.sh --allow-config`: lets a session write Claude Code's configuration back to the
   host. Without it, config is now read-only (see Changed).
 - `dev` inside the container now takes the invoking host user's UID/GID at startup

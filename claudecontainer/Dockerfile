@@ -45,6 +45,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/squid/allowed-domains.txt
+# CRLF -> LF on everything COPYed in from the build context (here and below): a Windows
+# checkout with core.autocrlf=true, or a gitignored file saved in Notepad, would
+# otherwise give squid "example.com\r" domains and the shell scripts a "/bin/sh\r"
+# interpreter. .gitattributes covers tracked files; this also covers the personal ones.
+RUN sed -i 's/\r$//' /etc/squid/squid.conf /etc/squid/allowed-domains.txt
 
 # Ubuntu 24.04's own python3 is 3.12; 3.14 comes from the deadsnakes PPA (needs
 # software-properties-common's add-apt-repository - there's no plain apt source line
@@ -95,7 +100,7 @@ no_proxy=localhost,127.0.0.1
 EOF
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x  /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
 # Create a non-root "dev" user at UID/GID 1000. entrypoint.sh remaps it to the
 # invoking host user's UID/GID at startup (passed in by run.sh), so files created in
@@ -141,7 +146,7 @@ RUN curl -fsSL https://bun.sh/install | env BUN_INSTALL=/usr/local bash
 # with nothing extra installed. Runs as root, after Node/Python/uv/bun are
 # already on PATH, in the same unrestricted build-time network as the rest of this file.
 COPY extra-setup.sh /tmp/extra-setup.sh
-RUN chmod +x /tmp/extra-setup.sh && /tmp/extra-setup.sh && rm /tmp/extra-setup.sh
+RUN sed -i 's/\r$//' /tmp/extra-setup.sh && chmod +x /tmp/extra-setup.sh && /tmp/extra-setup.sh && rm /tmp/extra-setup.sh
 
 # Stays root: entrypoint.sh needs it to start dockerd/squid, then drops to dev itself
 # (via `sudo -u dev`) before running the actual command.
