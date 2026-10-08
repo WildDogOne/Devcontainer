@@ -187,6 +187,8 @@ if ($rebootNeeded) {
   Write-Host "$n. REBOOT now (WSL/Docker Desktop were just installed or enabled)." -ForegroundColor Yellow; $n++
 }
 Write-Host "$n. Start Docker Desktop once and accept its terms; wait for 'Engine running'."; $n++
+Write-Host "   (A bare 'wsl' saying 'no installed distributions' is expected - Docker Desktop"
+Write-Host "   creates its own docker-desktop distro on first start; no Ubuntu needed.)"
 Write-Host "$n. Open a NEW PowerShell window (so PATH has git/docker), then in this folder:"; $n++
 Write-Host '     Copy-Item allowed-domains.txt.example allowed-domains.txt'
 Write-Host '     .\build.ps1'

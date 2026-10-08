@@ -29,7 +29,7 @@ Or download the installer from <https://git-scm.com/download/win>. Then open a *
 PowerShell window so `git` is on `PATH`, and clone the repo:
 
 ```powershell
-git clone <this repo's URL>
+git clone https://github.com/WildDogOne/Devcontainer.git
 cd Devcontainer\claudecontainer
 ```
 
@@ -51,6 +51,8 @@ the following:
    AMD-V) is enabled in the firmware.
 2. Enables WSL2 with `wsl --install --no-distribution`. Docker Desktop brings its own
    distro, so no Ubuntu is installed. If WSL is already set up, it runs `wsl --update`.
+   Running a bare `wsl` afterwards prints "no installed distributions". That's
+   expected. Docker Desktop creates its `docker-desktop` distro on first start.
 3. Installs Git for Windows through `winget`, unless you pass `-SkipGit`.
 4. Downloads the Docker Desktop installer, checks that it's signed by Docker Inc, and
    installs it silently with the WSL2 backend. Pass `-SkipDockerDesktop` to skip this.

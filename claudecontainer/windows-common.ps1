@@ -50,13 +50,15 @@ function Assert-DockerCli {
 }
 
 # WSL itself, not a distro: Docker Desktop's WSL2 backend runs its own docker-desktop
-# distro, so the user doesn't need Ubuntu or anything else installed. `wsl --status`
-# fails when the WSL feature/package isn't installed.
+# distro, so the user doesn't need Ubuntu or anything else installed - and a bare `wsl`
+# complaining "no installed distributions" is expected, not a failure. `wsl --version`
+# (Store WSL) or `wsl --status` (older inbox WSL) succeeding is taken as "installed";
+# depending on the WSL version, `--status` alone can fail just for lack of a distro.
 function Assert-Wsl {
   if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     throw "wsl.exe not found - WSL2 isn't installed. Run setup.ps1 (as admin) first."
   }
-  if (-not (Invoke-NativeQuiet wsl.exe @('--status'))) {
+  if (-not (Invoke-NativeQuiet wsl.exe @('--version')) -and -not (Invoke-NativeQuiet wsl.exe @('--status'))) {
     throw ("WSL is present but not set up ('wsl --status' failed). Run setup.ps1 (as admin), " +
       "or 'wsl --install --no-distribution' manually, then reboot.")
   }
