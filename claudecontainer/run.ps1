@@ -300,5 +300,5 @@ $dockerArgs.Add('claudecontainer:latest')
 $dockerArgs.AddRange($forward)
 
 $finalArgs = $dockerArgs.ToArray()
-& docker.exe @finalArgs
+& docker.exe run @finalArgs
 exit $LASTEXITCODE
