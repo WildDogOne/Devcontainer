@@ -54,8 +54,11 @@ the following:
    Running a bare `wsl` afterwards prints "no installed distributions". That's
    expected. Docker Desktop creates its `docker-desktop` distro on first start.
 3. Installs Git for Windows through `winget`, unless you pass `-SkipGit`.
-4. Downloads the Docker Desktop installer, checks that it's signed by Docker Inc, and
-   installs it silently with the WSL2 backend. Pass `-SkipDockerDesktop` to skip this.
+4. Installs Docker Desktop with the WSL2 backend through `winget`
+   (`Docker.DockerDesktop`). Without `winget`, or if `winget` fails, it downloads
+   Docker's installer directly, checks that it's signed by Docker Inc, and runs it
+   silently. Pass `-SkipDockerDesktop` to skip this. Update later with
+   `winget upgrade --id Docker.DockerDesktop`, or from Docker Desktop's own settings.
 5. Adds your account to the `docker-users` group.
 
 Afterwards:

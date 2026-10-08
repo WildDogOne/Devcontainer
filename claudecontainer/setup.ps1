@@ -129,34 +129,58 @@ if (-not $SkipGit) {
 
 # --- Docker Desktop ---------------------------------------------------------------
 $dockerExe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+# Docker's own installer arguments, used by both install paths below. --override
+# replaces winget's default silent switches outright, so --quiet has to be in here too.
+$dockerInstallArgs = @('install', '--quiet', '--accept-license', '--backend=wsl-2')
+
+# Fallback when winget is missing (LTSC/Server, or a fresh install whose App Installer
+# hasn't updated yet) or fails: fetch the installer straight from Docker.
+function Install-DockerDesktopDirect {
+  $arch = 'amd64'
+  if ($isArm) { $arch = 'arm64' }
+  $url = "https://desktop.docker.com/win/main/$arch/Docker%20Desktop%20Installer.exe"
+  $installer = Join-Path $env:TEMP 'DockerDesktopInstaller.exe'
+  Write-Host "Downloading $url (~600 MB)..."
+  # Windows PowerShell 5.1 on older .NET still defaults to TLS 1.0/1.1.
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $installer
+
+  # Refuse anything that isn't validly signed by Docker - a proxy/captive portal can
+  # hand back an HTML page or worse instead of the installer. (winget does the
+  # equivalent itself, against the hash in its package manifest.)
+  $sig = Get-AuthenticodeSignature -FilePath $installer
+  if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Docker Inc') {
+    Remove-Item $installer -Force
+    throw "Downloaded installer isn't validly signed by Docker Inc (status: $($sig.Status)). Aborting."
+  }
+
+  Write-Host 'Installing Docker Desktop (WSL2 backend) - takes a few minutes...'
+  $proc = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList $dockerInstallArgs
+  Remove-Item $installer -Force -ErrorAction SilentlyContinue
+  if ($proc.ExitCode -ne 0) {
+    throw "Docker Desktop installer failed (exit $($proc.ExitCode))."
+  }
+}
+
 if (-not $SkipDockerDesktop) {
   Step 'Checking Docker Desktop'
   if (Test-Path $dockerExe) {
-    Write-Host 'Already installed (update it from its own Settings -> Software updates).'
+    Write-Host 'Already installed (update with: winget upgrade --id Docker.DockerDesktop).'
   } else {
-    $arch = 'amd64'
-    if ($isArm) { $arch = 'arm64' }
-    $url = "https://desktop.docker.com/win/main/$arch/Docker%20Desktop%20Installer.exe"
-    $installer = Join-Path $env:TEMP 'DockerDesktopInstaller.exe'
-    Write-Host "Downloading $url (~600 MB)..."
-    # Windows PowerShell 5.1 on older .NET still defaults to TLS 1.0/1.1.
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $installer
-
-    # Refuse anything that isn't validly signed by Docker - a proxy/captive portal can
-    # hand back an HTML page or worse instead of the installer.
-    $sig = Get-AuthenticodeSignature -FilePath $installer
-    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Docker Inc') {
-      Remove-Item $installer -Force
-      throw "Downloaded installer isn't validly signed by Docker Inc (status: $($sig.Status)). Aborting."
-    }
-
-    Write-Host 'Installing Docker Desktop (WSL2 backend) - takes a few minutes...'
-    $proc = Start-Process -FilePath $installer -Wait -PassThru `
-      -ArgumentList @('install', '--quiet', '--accept-license', '--backend=wsl-2')
-    Remove-Item $installer -Force -ErrorAction SilentlyContinue
-    if ($proc.ExitCode -ne 0) {
-      throw "Docker Desktop installer failed (exit $($proc.ExitCode))."
+    if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
+      Write-Host 'Installing Docker Desktop via winget (WSL2 backend) - takes a few minutes...'
+      & winget.exe install --exact --id Docker.DockerDesktop --source winget `
+        --accept-package-agreements --accept-source-agreements `
+        --override ($dockerInstallArgs -join ' ')
+      # Judged by the result on disk rather than the exit code alone: winget also
+      # returns non-zero for outcomes like "installed, reboot required".
+      if (-not (Test-Path $dockerExe)) {
+        Write-Warning "winget didn't install Docker Desktop (exit $LASTEXITCODE) - falling back to Docker's own installer."
+        Install-DockerDesktopDirect
+      }
+    } else {
+      Write-Host 'winget not available - using Docker''s own installer.'
+      Install-DockerDesktopDirect
     }
     $rebootNeeded = $true
   }
