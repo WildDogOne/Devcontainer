@@ -1,0 +1,18 @@
+# Optional, per-machine settings for run.ps1 - the Windows counterpart of run.local.sh
+# (see run.local.sh.example for the reasoning). Copy this file to run.local.ps1
+# (gitignored) and edit it; run.ps1 dot-sources it if present.
+#
+# Each EXTRA_MOUNTS entry is host[:container][:ro], with a Windows host path. Without a
+# container path it's mounted at the translated path (C:\data -> /c/data).
+
+$EXTRA_MOUNTS = @(
+  # "$env:USERPROFILE\Obsidian"
+  # 'D:\datasets:/data:ro'
+)
+
+# More ~/.claude entries to keep read-only unless --allow-config (see run.sh):
+# $CLAUDE_CONFIG_RO_PATHS += 'statusline.sh'
+
+# No UID/GID remap by default on Windows (see run.ps1). Force one with:
+# $CONTAINER_UID = '1000'
+# $CONTAINER_GID = '1000'

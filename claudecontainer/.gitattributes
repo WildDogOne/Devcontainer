@@ -1,0 +1,7 @@
+# Everything here ends up inside a Linux image or is run by sh/bash, so keep LF even in
+# a Windows checkout with core.autocrlf=true (the Dockerfile strips CRs too, as a
+# backstop for the gitignored personal files). PowerShell scripts are fine either way;
+# CRLF is just the Windows convention for them.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.ps1.example text eol=crlf
