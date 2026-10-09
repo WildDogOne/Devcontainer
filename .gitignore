@@ -217,8 +217,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .claude
-claude-code-server/workspace
-claude-code-server/claude_home
-claude-code-server/pcloud_sync
-claude-code-server/pcloud_home
 CLAUDE.md

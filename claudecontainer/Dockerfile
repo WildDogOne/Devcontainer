@@ -7,10 +7,10 @@ LABEL project=claudecontainer
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Mirrors ../.devcontainer/Dockerfile's package list (same reasoning: hand-installed
-# rather than devcontainer.json "features", since there's no devcontainer.json here at
-# all; NodeSource for a current Node, since Ubuntu 24.04's own "nodejs" is 18.x/EOL and
-# below Claude Code's >=22 requirement; "gh" isn't in Ubuntu's default repos).
+# Packages are hand-installed rather than via devcontainer.json "features", since there's
+# no devcontainer.json here at all. NodeSource for a current Node, since Ubuntu 24.04's
+# own "nodejs" is 18.x/EOL and below Claude Code's >=22 requirement; "gh" isn't in
+# Ubuntu's default repos.
 # openssh-client (not -server): outbound git-over-SSH only - see entrypoint.sh/run.sh
 # for host ssh-agent forwarding. Nothing listens for inbound SSH in this image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
