@@ -1,6 +1,7 @@
 # Harnesses
 
-Each subdirectory here is one coding tool the sandbox can run (`claude/` is Claude Code).
+Each subdirectory here is one coding tool the sandbox can run: `claude/` is Claude Code,
+`hermes/` is [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 The sandbox itself (`image/`, `run.sh`, `run.ps1`) knows nothing about any of them - it
 reads everything harness-specific from these three files:
 
@@ -16,8 +17,8 @@ and started with `run.sh --harness <name>`.
 ## harness.conf
 
 Plain `key=value` lines; `#` starts a comment. List values are space-separated, so
-paths can't contain spaces. All paths are relative to your home directory and are
-mounted at the same path inside the container.
+paths can't contain spaces. `state`, `config` and `staged` paths are relative to your
+home directory and are mounted at the same path inside the container.
 
 | Key | Meaning |
 |---|---|
@@ -25,6 +26,7 @@ mounted at the same path inside the container.
 | `state` | Directories mounted read-write: login, session history, caches. Created on the host if missing. |
 | `config` | Files or directories mounted read-only on top of `state`, unless `--allow-config`. Anything that makes the tool run code or change behavior the next time you use it natively on the host belongs here. Missing entries are skipped. |
 | `staged` | Files the tool rewrites on every start. With `--allow-config` they're mounted read-write; otherwise they're mounted read-only and copied into the container, so edits are discarded on exit. Created on the host if missing (`{}` for `.json`, empty otherwise). |
+| `owned` | Absolute paths inside the image that must belong to the `dev` user, for tools that refuse to run an install owned by someone else. `install.sh` chowns them to `1000:1000`; if `dev` is remapped to a different host UID, `entrypoint.sh` re-chowns them at startup. Rarely needed (see `hermes/`). |
 
 ## Adding a harness
 

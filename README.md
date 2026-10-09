@@ -16,9 +16,9 @@ the container is gone.
   through package registries, GitHub, Docker Hub and the agent's own API.
 - **Docker inside:** each session has its own nested Docker daemon, so `docker` and
   `docker compose` work without touching the host's.
-- **Pluggable harnesses:** Claude Code ships today. Each tool is a small folder under
-  [`harnesses/`](harnesses/), so adding another (e.g. opencode) needs no changes to
-  the sandbox itself.
+- **Pluggable harnesses:** Claude Code and [Hermes Agent](#hermes-agent) ship today.
+  Each tool is a small folder under [`harnesses/`](harnesses/), so adding another
+  (e.g. opencode) needs no changes to the sandbox itself.
 
 **What it isn't:** a hard security boundary. The proxy guards against accidents, but
 a tool that ignores proxy settings can still reach the network, and the container runs
@@ -34,7 +34,8 @@ been tested on Windows yet.
 - Optional: an SSH agent (`$SSH_AUTH_SOCK`) for git-over-SSH inside the container.
 - Optional: [sysbox](docs/sysbox.md) for `--sysbox`.
 
-You don't need Claude Code installed on the host; it's installed in the image.
+You don't need Claude Code (or any other harness) installed on the host; it's
+installed in the image.
 
 ## Quick start
 
@@ -83,6 +84,30 @@ Effective config on this machine:
     /home/me/.claude.json -> copied in from a ro mount (edits discarded on exit)
     ...
 ```
+
+### Hermes Agent
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) works the same way, with
+its own image and its state in `~/.hermes`:
+
+```sh
+./build.sh hermes                                # devcontainer:hermes
+~/Devcontainer/run.sh --harness hermes --allow-config   # first run: pick a model and log in
+~/Devcontainer/run.sh --harness hermes                  # every run after that
+```
+
+On the first run, `hermes setup` (or `hermes model`) inside the session walks you
+through choosing a provider; `--allow-config` lets it save `config.yaml` and `.env`.
+Set `HARNESS=hermes` in `config/run.local.sh` to make it the default.
+
+- The allowlist covers Nous Portal, OpenRouter, Anthropic and OpenAI. Any other
+  provider needs its API domain in `config/allowed-domains.txt` (then rebuild); for a
+  self-hosted OpenAI-compatible server (llama.cpp, Ollama, vLLM) include the port,
+  e.g. `llm.example.lan:8080`, and set `provider: custom` plus `base_url` in
+  `~/.hermes/config.yaml`.
+- The image is large (about 6 GB), since Hermes brings its own Python, Node and UI
+  builds. The first launch for each home also prepares a dependency environment in
+  `~/.hermes/installs` (about 670 MB), which takes a minute.
 
 ## Usage
 
@@ -272,8 +297,10 @@ All outbound HTTP (S) goes through a squid proxy inside the container, listening
 - `harnesses/NAME/allowed-domains.txt`: what the harness itself needs
 - `config/allowed-domains.txt`: your own additions (gitignored)
 
-One domain per line; a leading `.` also matches subdomains. Add to your own file (and
-rebuild) when a workflow needs a new host. For a single session, use `--allow-list FILE`
+One domain per line; a leading `.` also matches subdomains. Only ports 80 and 443 are
+allowed, unless an entry names another one: `llm.example.lan:8080` (for example a
+self-hosted model server) also opens port 8080, for every allowed domain. Add to your
+own file (and rebuild) when a workflow needs a new host. For a single session, use `--allow-list FILE`
 (replaces the whole list) or `--allow-internet` instead, which needs no rebuild.
 
 `entrypoint.sh` sets the proxy three ways:

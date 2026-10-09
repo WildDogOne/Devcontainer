@@ -9,6 +9,16 @@ the change takes effect.
 
 ### Added
 
+- Second harness: [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+  (`./build.sh hermes`, `run.sh --harness hermes`). Its state and config live in
+  `~/.hermes`; the install itself is baked into the image under `/opt/hermes`.
+- Allowlist entries can name a port (`llm.example.lan:8080`), which opens that port in
+  the egress proxy on top of 80/443 - for self-hosted model servers and the like.
+  Works in `config/allowed-domains.txt` (rebuild) and `--allow-list` files.
+- `harness.conf` key `owned`: image paths re-chowned to `dev` at startup when `dev` is
+  remapped to a different UID (needs a rebuild of every image, since it's read by
+  `entrypoint.sh`).
+
 - `build.sh`/`build.ps1` create `allowed-domains.txt` from `allowed-domains.txt.example`
   if it's missing (like `extra-setup.sh`), instead of failing the build.
 - Windows support through Docker Desktop (WSL2 backend), untested so far:

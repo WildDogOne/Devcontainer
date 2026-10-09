@@ -31,9 +31,18 @@ if [ -f /etc/squid/allowed-domains.override.txt ]; then
   tr -d '\r' < /etc/squid/allowed-domains.override.txt > /etc/squid/allowed-domains.txt
 fi
 
+# Entries may carry a port (`llm.example.lan:8896`, e.g. a self-hosted model server):
+# squid's dstdomain ACL can't take one, so split the list into bare domains and the
+# extra ports to allow on top of 80/443 (see squid.conf). A listed port is open for
+# every allowed domain, not just that one - the domain check still applies.
+sed 's/\r$//; s/#.*//; s/[[:space:]]//g' /etc/squid/allowed-domains.txt | grep -v '^$' > /tmp/allowlist || true
+sed 's/:[0-9]*$//' /tmp/allowlist | sort -u > /etc/squid/allowed-dstdomains.txt
+{ printf '80\n443\n'; sed -n 's/.*:\([0-9][0-9]*\)$/\1/p' /tmp/allowlist; } | sort -un > /etc/squid/allowed-ports.txt
+rm -f /tmp/allowlist
+
 # run.sh --allow-internet sets this to drop the domain allowlist check entirely for this
 # session, leaving the Safe_ports/SSL_ports port restrictions in squid.conf untouched -
-# still only plain HTTP on 80 and CONNECT to 443, just no longer filtered by domain.
+# still only 80/443 (plus any ports from the allowlist), just no longer filtered by domain.
 # Session-scoped only: patches this container's own writable-layer copy of squid.conf,
 # discarded with it (--rm); the image's squid.conf stays static.
 if [ "${SQUID_ALLOW_INTERNET:-0}" = "1" ]; then
@@ -58,6 +67,16 @@ if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ] && [ "$HOST_UID" != 0 ]; the
   fi
   chown -R dev:dev /home/dev
 fi
+
+# harness.conf `owned`: image paths the harness needs dev to own (e.g. an install that
+# refuses to run under a different UID). install.sh chowns them to 1000:1000 at build;
+# only re-chown when the remap above moved dev off those IDs, since -R over a whole
+# install isn't free.
+for path in $(sed -n 's/^owned=//p' /etc/devcontainer/harness.conf | tail -n 1); do
+  if [ -e "$path" ] && [ "$(stat -c '%u:%g' "$path")" != "$(id -u dev):$(id -g dev)" ]; then
+    chown -R dev:dev "$path"
+  fi
+done
 
 nohup squid -f /etc/squid/squid.conf -N > /tmp/squid.log 2>&1 &
 sleep 1
