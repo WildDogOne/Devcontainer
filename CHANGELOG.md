@@ -1,8 +1,9 @@
 # Changelog
 
-Notable changes to claudecontainer. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Entries marked **rebuild**
-touch a file baked into the image - run `./build.sh` before the change takes effect.
+Notable changes to this sandbox (called claudecontainer before the harness split).
+Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Entries marked **rebuild** touch a file baked into the image - run `./build.sh` before
+the change takes effect.
 
 ## Unreleased
 
@@ -33,6 +34,28 @@ touch a file baked into the image - run `./build.sh` before the change takes eff
 
 ### Changed
 
+- **Repository restructured, Claude Code split out into a "harness".** The sandbox
+  moved from `claudecontainer/` to the repo root: `build.sh`/`run.sh` (and the `.ps1`
+  scripts) at the top, `Dockerfile`/`entrypoint.sh`/`squid.conf` in `image/`,
+  personal files in `config/`, `windows-common.ps1` in `lib/`. Everything
+  Claude-specific now lives in `harnesses/claude/` (`install.sh`, `harness.conf`,
+  `allowed-domains.txt`), and the sandbox reads it from there - see
+  `harnesses/README.md` for adding another harness. **rebuild**
+- Images are now `devcontainer:<harness>` (was `claudecontainer:latest`), one per
+  harness. `build.sh` builds all of them, or the ones named; `run.sh --harness <name>`
+  (or `HARNESS=` in `config/run.local.sh`/the environment) picks one, default `claude`.
+  Remove the old image with `docker rmi claudecontainer:latest`.
+- **Moving your personal files:** `run.local.sh`, `run.local.ps1`, `extra-setup.sh` and
+  `allowed-domains.txt` now live in `config/`. `CLAUDE_CONFIG_RO_PATHS` is now
+  `EXTRA_CONFIG_RO_PATHS`, with paths relative to `$HOME` (`statusline.sh` becomes
+  `.claude/statusline.sh`).
+- The egress allowlist is assembled at build time from `image/allowed-domains.txt`
+  (shared defaults), `harnesses/<name>/allowed-domains.txt` and your
+  `config/allowed-domains.txt`, which now only needs your own additions instead of the
+  whole list. `--allow-list` still replaces the whole list for one session. **rebuild**
+- `run.sh` now creates the harness's state directories and staged files (`~/.claude`,
+  `~/.claude.json`) if they're missing, like `run.ps1` already did, and refuses to start
+  with a clear message when the image hasn't been built.
 - **Claude Code config is read-only by default.** `settings.json`,
   `settings.local.json`, `CLAUDE.md`, `keybindings.json`, `agents/`, `commands/`,
   `skills/`, `hooks/`, `plugins/` and `output-styles/` under `~/.claude` are mounted

@@ -1,21 +1,21 @@
-# Windows counterpart of run.sh: launches a fresh, disposable claudecontainer scoped to
+# Windows counterpart of run.sh: launches a fresh, disposable sandbox container scoped to
 # the current directory, through Docker Desktop. Same flags as run.sh (see run.sh's
 # header and README.md for what each one does and why) - parsed by hand from $args rather
-# than a param() block, so `--continue`-style claude flags pass through untouched:
+# than a param() block, so `--continue`-style harness flags pass through untouched:
 #
 #   cd C:\path\to\project
-#   C:\path\to\claudecontainer\run.ps1 [--allow-config] [--continue] ...
+#   C:\path\to\Devcontainer\run.ps1 [--harness claude] [--allow-config] [--continue] ...
 #
 # Differences from run.sh, all forced by the host being Windows:
 #
 # - Paths can't be the same on both sides. C:\Users\me\proj is mounted at
 #   /c/Users/me/proj, and dev's $HOME is %USERPROFILE% translated the same way. A
-#   Claude Code that also runs natively on Windows records Windows paths (plugin
-#   installLocation, per-project settings in ~/.claude.json), which won't match the
-#   container's - plugins registered natively may need re-registering from inside.
+#   harness that also runs natively on Windows records Windows paths (e.g. Claude
+#   Code's plugin installLocation, per-project settings in ~/.claude.json), which won't
+#   match the container's - plugins registered natively may need re-registering inside.
 # - No UID/GID remap by default: Windows has no UIDs, and Docker Desktop's bind mounts of
 #   Windows folders accept writes from any container user and own the results by you.
-#   CONTAINER_UID/CONTAINER_GID (environment or run.local.ps1) still force one.
+#   CONTAINER_UID/CONTAINER_GID (environment or config\run.local.ps1) still force one.
 # - No SSH agent forwarding: the Windows OpenSSH agent is a named pipe, which can't be
 #   mounted into a Linux container. Use HTTPS remotes (gh auth) inside instead.
 # - --sysbox is refused: sysbox can't be installed into Docker Desktop's VM.
@@ -35,7 +35,7 @@ Set-StrictMode -Version 2.0
 # Captured first: dot-sourced helpers below get their own $args.
 $cliArgs = @($args)
 
-. (Join-Path $PSScriptRoot 'windows-common.ps1')
+. (Join-Path $PSScriptRoot 'lib\windows-common.ps1')
 Assert-Windows
 
 function Fail([string]$msg) {
@@ -90,6 +90,7 @@ function Add-MountSpec([string]$spec, [string]$origin) {
   Add-Bind $hostPath $target -ReadOnly:($mode -eq 'ro')
 }
 
+$cliHarness = ''
 $hostNetwork = $false
 $showHelp = $false
 $allowList = ''
@@ -110,6 +111,10 @@ while ($i -lt $cliArgs.Count) {
     '--allow-container' { $allowContainer = $true; $i++; continue }
     '--allow-config'    { $allowConfig = $true; $i++; continue }
     '--sysbox'          { $sysbox = $true; $i++; continue }
+    '--harness' {
+      if ($i + 1 -ge $cliArgs.Count) { Fail '--harness requires a harness name' }
+      $cliHarness = [string]$cliArgs[$i + 1]; $i += 2; continue
+    }
     '--allow-list' {
       if ($i + 1 -ge $cliArgs.Count) { Fail '--allow-list requires a path argument' }
       $allowList = [string]$cliArgs[$i + 1]; $i += 2; continue
@@ -136,27 +141,51 @@ if ($location.Provider.Name -ne 'FileSystem') { Fail "current location isn't a f
 $projectDir = $location.ProviderPath
 if ($projectDir.StartsWith('\\')) {
   Fail ("$projectDir is a UNC/network path. If it's inside WSL (\\wsl.localhost\...), open a " +
-    "WSL shell there and run claudecontainer/run.sh instead - same image, native paths, much faster.")
+    "WSL shell there and run run.sh instead - same image, native paths, much faster.")
 }
 $projectTarget = ConvertTo-ContainerPath $projectDir
 
-# Native Claude Code on Windows keeps its login/config under %USERPROFILE%, same layout
-# as ~ on Linux/macOS.
+# Native harnesses on Windows (e.g. Claude Code) keep their login/config under
+# %USERPROFILE%, same layout as ~ on Linux/macOS.
 $hostHome = $env:USERPROFILE
 $homeTarget = ConvertTo-ContainerPath $hostHome
-$claudeDir = Join-Path $hostHome '.claude'
-$claudeJson = Join-Path $hostHome '.claude.json'
 
-# See run.sh. Extendable from run.local.ps1: $CLAUDE_CONFIG_RO_PATHS += 'statusline.ps1'
-$CLAUDE_CONFIG_RO_PATHS = @(
-  'settings.json', 'settings.local.json', 'CLAUDE.md', 'keybindings.json',
-  'agents', 'commands', 'skills', 'hooks', 'plugins', 'output-styles'
-)
+# See run.sh. EXTRA_CONFIG_RO_PATHS is relative to %USERPROFILE%, extendable from
+# config\run.local.ps1: $EXTRA_CONFIG_RO_PATHS += '.claude/statusline.ps1'
 $EXTRA_MOUNTS = @()
+$EXTRA_CONFIG_RO_PATHS = @()
+$HARNESS = $env:HARNESS
+if (-not $HARNESS) { $HARNESS = 'claude' }
 $CONTAINER_UID = $env:CONTAINER_UID
 $CONTAINER_GID = $env:CONTAINER_GID
-$localConfig = Join-Path $PSScriptRoot 'run.local.ps1'
+$localConfig = Join-Path $PSScriptRoot 'config\run.local.ps1'
 if (Test-Path $localConfig) { . $localConfig }
+
+$harnessName = $HARNESS
+if ($cliHarness) { $harnessName = $cliHarness }
+$harnessConfFile = Join-Path $PSScriptRoot "harnesses\$harnessName\harness.conf"
+if (-not (Test-Path -LiteralPath $harnessConfFile -PathType Leaf)) {
+  Fail "unknown harness '$harnessName' (no $harnessConfFile)"
+}
+$image = "devcontainer:$harnessName"
+
+# See harnesses\README.md for the keys. Space-separated lists; last line wins.
+function Get-HarnessConf([string]$key) {
+  $value = ''
+  foreach ($line in [IO.File]::ReadAllLines($harnessConfFile)) {
+    if ($line.StartsWith("$key=")) { $value = $line.Substring($key.Length + 1).Trim() }
+  }
+  return $value
+}
+function Split-HarnessList([string]$value) {
+  return @($value -split '\s+' | Where-Object { $_ })
+}
+$harnessState = @(Split-HarnessList (Get-HarnessConf 'state'))
+$harnessStaged = @(Split-HarnessList (Get-HarnessConf 'staged'))
+$configRoPaths = @(Split-HarnessList (Get-HarnessConf 'config')) + @($EXTRA_CONFIG_RO_PATHS)
+
+# harness.conf paths are relative to the home directory, with forward slashes.
+function Get-HostHomePath([string]$rel) { return (Join-Path $hostHome ($rel -replace '/', '\')) }
 
 # See run.sh's remap block and the header comment above: off unless forced.
 $remapUid = ''
@@ -182,46 +211,58 @@ if ($showHelp) {
   if ($allowContainer) { $sockDesc = "Docker Desktop's /var/run/docker.sock (--allow-container passed - root-equivalent access to its VM and every container in it)" }
   else { $sockDesc = 'sandboxed nested dockerd only (default; pass --allow-container to use the host daemon)' }
   if ($allowConfig) { $cfgDesc = 'WRITABLE (--allow-config passed - edits persist on the host)' }
-  else { $cfgDesc = "read-only (default; pass --allow-config to let claude change it)" }
+  else { $cfgDesc = "read-only (default; pass --allow-config to let the harness change it)" }
+  $harnessDesc = $harnessName
+  if ($cliHarness) { $harnessDesc += ' (--harness passed)' }
+  $available = (Get-ChildItem -Directory (Join-Path $PSScriptRoot 'harnesses') | ForEach-Object { $_.Name }) -join ' '
+  $defaultCommand = Get-HarnessConf 'command'
 
   @"
-Usage: run.ps1 [--host-network] [--allow-list <path> | --allow-internet] [--allow-container]
-               [--allow-config] [--mount <path|host:container[:ro]>]... [-h|--help] [claude-args... | command...]
+Usage: run.ps1 [--harness <name>] [--host-network] [--allow-list <path> | --allow-internet]
+               [--allow-container] [--allow-config] [--mount <path|host:container[:ro]>]...
+               [-h|--help] [harness-args... | command...]
 
 Windows/Docker Desktop version of run.sh - same flags, see run.sh --help or README.md
 for what each one does. --sysbox isn't available here. Mount specs take Windows host
 paths: C:\data (-> /c/data, read-write), C:\data:/data, C:\data:/data:ro.
+Available harnesses: $available
 
-Anything else starting with '-' is forwarded to ``claude`` itself (e.g. --continue).
-A bare command (e.g. ``run.ps1 bash``) overrides the default ``claude`` invocation.
+Anything else starting with '-' is forwarded to the harness itself (e.g. --continue).
+A bare command (e.g. ``run.ps1 bash``) overrides the harness's default command
+($defaultCommand).
 
 Effective config on this machine:
-  Image:          claudecontainer:latest
+  Harness:        $harnessDesc
+  Image:          $image
   Network:        $netDesc
   Runtime:        --privileged (sysbox not available on Docker Desktop)
   Allowlist:      $listDesc
   Docker socket:  $sockDesc
-  Claude config:  $cfgDesc
+  Harness config: $cfgDesc
   dev UID:GID:    $remapDesc
   Mounts:
     $projectDir -> $projectTarget
-    $claudeDir -> $homeTarget/.claude (dev's `$HOME is $homeTarget)
 "@ | Write-Host
+  foreach ($entry in $harnessState) {
+    Write-Host "    $(Get-HostHomePath $entry) -> $homeTarget/$entry (dev's `$HOME is $homeTarget)"
+  }
   if ($allowConfig) {
-    Write-Host "    $claudeJson -> $homeTarget/.claude.json"
+    foreach ($entry in $harnessStaged) { Write-Host "    $(Get-HostHomePath $entry) -> $homeTarget/$entry" }
   } else {
-    foreach ($entry in $CLAUDE_CONFIG_RO_PATHS) {
-      if (Test-Path -LiteralPath (Join-Path $claudeDir $entry)) {
-        Write-Host "    $(Join-Path $claudeDir $entry) -> $homeTarget/.claude/$entry (ro)"
+    foreach ($entry in $configRoPaths) {
+      if (Test-Path -LiteralPath (Get-HostHomePath $entry)) {
+        Write-Host "    $(Get-HostHomePath $entry) -> $homeTarget/$entry (ro)"
       }
     }
-    Write-Host "    $claudeJson -> copied in from a ro mount (edits discarded on exit)"
+    foreach ($entry in $harnessStaged) {
+      Write-Host "    $(Get-HostHomePath $entry) -> copied in from a ro mount (edits discarded on exit)"
+    }
   }
   Write-Host '    (no SSH agent forwarding on Windows - use HTTPS remotes / gh auth inside)'
   if (@($EXTRA_MOUNTS).Count -gt 0) {
-    foreach ($m in $EXTRA_MOUNTS) { Write-Host "    $m (from run.local.ps1)" }
+    foreach ($m in $EXTRA_MOUNTS) { Write-Host "    $m (from config\run.local.ps1)" }
   } else {
-    Write-Host '    (no run.local.ps1 extra mounts)'
+    Write-Host '    (no config\run.local.ps1 extra mounts)'
   }
   foreach ($m in $cliMounts) { Write-Host "    $m (from --mount)" }
   exit 0
@@ -236,43 +277,54 @@ try {
 } catch {
   Fail $_.Exception.Message
 }
-if (-not (Invoke-NativeQuiet docker.exe @('image', 'inspect', 'claudecontainer:latest'))) {
-  Fail "image claudecontainer:latest not found - run $(Join-Path $PSScriptRoot 'build.ps1') first."
+if (-not (Invoke-NativeQuiet docker.exe @('image', 'inspect', $image))) {
+  Fail "image $image not found - run $(Join-Path $PSScriptRoot 'build.ps1') $harnessName first."
 }
 
-# First run without Claude Code on the host (README.md): --mount would refuse to start
-# on a missing source anyway, so create the two login paths up front instead of making
-# the user do it by hand. '{}' is what an empty ~/.claude.json should contain.
-if (-not (Test-Path -LiteralPath $claudeDir)) {
-  Write-Host "Creating $claudeDir (first run - log in with --allow-config once, see README.md)"
-  $null = New-Item -ItemType Directory -Path $claudeDir
+# First run without the harness on the host (README.md): --mount would refuse to start
+# on a missing source anyway, so create the state dirs and staged files up front
+# instead of making the user do it by hand. '{}' is what an empty JSON config (e.g.
+# ~/.claude.json) should contain.
+foreach ($entry in $harnessState) {
+  $p = Get-HostHomePath $entry
+  if (-not (Test-Path -LiteralPath $p)) {
+    Write-Host "Creating $p (first run - log in with --allow-config once, see README.md)"
+    $null = New-Item -ItemType Directory -Path $p
+  }
 }
-if (Test-Path -LiteralPath $claudeJson -PathType Container) {
-  Fail "$claudeJson is a directory (left over from a failed earlier mount?) - remove it and retry."
-}
-if (-not (Test-Path -LiteralPath $claudeJson)) {
-  [IO.File]::WriteAllText($claudeJson, '{}')
+foreach ($entry in $harnessStaged) {
+  $p = Get-HostHomePath $entry
+  if (Test-Path -LiteralPath $p -PathType Container) {
+    Fail "$p is a directory (left over from a failed earlier mount?) - remove it and retry."
+  }
+  if (-not (Test-Path -LiteralPath $p)) {
+    $parent = Split-Path -Parent $p
+    if (-not (Test-Path -LiteralPath $parent)) { $null = New-Item -ItemType Directory -Path $parent }
+    if ($entry.EndsWith('.json')) { [IO.File]::WriteAllText($p, '{}') } else { [IO.File]::WriteAllText($p, '') }
+  }
 }
 
 $dockerArgs = New-Object System.Collections.Generic.List[string]
 $dockerArgs.AddRange([string[]]@('--rm', '-it', '-w', $projectTarget, '-e', "HOST_HOME=$homeTarget"))
 Add-Bind $projectDir $projectTarget
-Add-Bind $claudeDir "$homeTarget/.claude"
+foreach ($entry in $harnessState) { Add-Bind (Get-HostHomePath $entry) "$homeTarget/$entry" }
 
 if ($remapUid) {
   $dockerArgs.AddRange([string[]]@('-e', "HOST_UID=$remapUid", '-e', "HOST_GID=$remapGid"))
 }
 
-# See run.sh: per-entry ro mounts nest inside the rw ~/.claude mount; ~/.claude.json is
-# staged ro and copied into the container's writable layer by entrypoint.sh.
+# See run.sh: per-entry ro mounts nest inside the rw state mounts; staged files are
+# mounted ro and copied into the container's writable layer by entrypoint.sh.
 if ($allowConfig) {
-  Add-Bind $claudeJson "$homeTarget/.claude.json"
+  foreach ($entry in $harnessStaged) { Add-Bind (Get-HostHomePath $entry) "$homeTarget/$entry" }
 } else {
-  foreach ($entry in $CLAUDE_CONFIG_RO_PATHS) {
-    $p = Join-Path $claudeDir $entry
-    if (Test-Path -LiteralPath $p) { Add-Bind $p "$homeTarget/.claude/$entry" -ReadOnly }
+  foreach ($entry in $configRoPaths) {
+    $p = Get-HostHomePath $entry
+    if (Test-Path -LiteralPath $p) { Add-Bind $p "$homeTarget/$entry" -ReadOnly }
   }
-  Add-Bind $claudeJson '/etc/claudecontainer/claude.json.host' -ReadOnly
+  foreach ($entry in $harnessStaged) {
+    Add-Bind (Get-HostHomePath $entry) "/etc/devcontainer/staged/$entry" -ReadOnly
+  }
 }
 
 # No sysbox on Docker Desktop (refused above), so always --privileged for the nested
@@ -293,10 +345,10 @@ if ($allowContainer) {
   $dockerArgs.AddRange([string[]]@('-v', '/var/run/docker.sock:/var/run/docker.sock', '-e', 'ALLOW_CONTAINER=1'))
 }
 
-foreach ($m in @($EXTRA_MOUNTS)) { Add-MountSpec ([string]$m) 'run.local.ps1' }
+foreach ($m in @($EXTRA_MOUNTS)) { Add-MountSpec ([string]$m) 'config\run.local.ps1' }
 foreach ($m in $cliMounts) { Add-MountSpec $m '--mount' }
 
-$dockerArgs.Add('claudecontainer:latest')
+$dockerArgs.Add($image)
 $dockerArgs.AddRange($forward)
 
 $finalArgs = $dockerArgs.ToArray()

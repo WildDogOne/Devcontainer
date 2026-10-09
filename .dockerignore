@@ -1,0 +1,7 @@
+# The build context is the repo root (see build.sh), but the image only needs these -
+# keeps .git, docs and the host-side scripts out of the context.
+*
+!image/
+!harnesses/
+!config/extra-setup.sh
+!config/allowed-domains.txt

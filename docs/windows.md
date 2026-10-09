@@ -1,6 +1,6 @@
 # Windows hosts
 
-On Windows, claudecontainer runs through Docker Desktop with its WSL2 backend. Three
+On Windows, the sandbox runs through Docker Desktop with its WSL2 backend. Three
 PowerShell scripts stand in for the shell scripts:
 
 | Script      | Linux/macOS equivalent | What it does                                                        |
@@ -30,7 +30,7 @@ PowerShell window so `git` is on `PATH`, and clone the repo:
 
 ```powershell
 git clone https://github.com/WildDogOne/Devcontainer.git
-cd Devcontainer\claudecontainer
+cd Devcontainer
 ```
 
 `setup.ps1` also installs Git if it's still missing, unless you pass `-SkipGit`. That
@@ -97,37 +97,40 @@ Before building, `build.ps1` checks that:
 - Docker Desktop is in Linux-containers mode, not Windows-containers mode.
 
 It warns if Docker Desktop isn't using the WSL2 backend. Then it builds and prunes the
-image exactly like `build.sh`, including creating `allowed-domains.txt` and
-`extra-setup.sh` from their `.example` files if they don't exist yet.
+images exactly like `build.sh`, including creating `config\allowed-domains.txt` and
+`config\extra-setup.sh` from their `.example` files if they don't exist yet. Like
+`build.sh`, it builds every harness by default, or only the ones you name
+(`.\build.ps1 claude`).
 
 ## 4. Run
 
 ```powershell
 cd C:\path\to\project
-C:\path\to\claudecontainer\run.ps1 --allow-config   # first run: log in, see README.md
-C:\path\to\claudecontainer\run.ps1                  # afterwards
+C:\path\to\Devcontainer\run.ps1 --allow-config   # first run: log in, see README.md
+C:\path\to\Devcontainer\run.ps1                  # afterwards
 ```
 
-On the first run, `run.ps1` creates `%USERPROFILE%\.claude` and
-`%USERPROFILE%\.claude.json` for you. You don't need to create them by hand as on Linux.
+On the first run, `run.ps1` creates the harness's state under `%USERPROFILE%` for you
+(for Claude Code, `.claude` and `.claude.json`).
 
 To launch it by a short name, add a function to your PowerShell profile (`notepad $PROFILE`):
 
 ```powershell
-function claudecli { & 'C:\path\to\claudecontainer\run.ps1' @args }
+function claudecli { & 'C:\path\to\Devcontainer\run.ps1' @args }
 ```
 
 `run.ps1` takes the same flags as `run.sh`; see [Usage](../README.md#usage). For a
-per-machine config like `run.local.sh`, copy `run.local.ps1.example` to `run.local.ps1`.
+per-machine config like `run.local.sh`, copy `config\run.local.ps1.example` to
+`config\run.local.ps1`.
 
 ## How it differs from Linux
 
 - **Paths.** Windows paths can't appear unchanged inside a Linux container, so
   `C:\Users\me\proj` is mounted at `/c/Users/me/proj`. Inside the container, `$HOME`
-  is `%USERPROFILE%` translated the same way. If you also run Claude Code natively on
-  Windows, it records Windows paths (plugin `installLocation`, per-project entries in
-  `~/.claude.json`). Those don't match inside the container, so plugins registered
-  natively may have to be registered again from inside.
+  is `%USERPROFILE%` translated the same way. If you also run the harness natively on
+  Windows, it may record Windows paths: Claude Code does (plugin `installLocation`,
+  per-project entries in `~/.claude.json`). Those don't match inside the container,
+  so plugins registered natively may have to be registered again from inside.
 - **`--mount` syntax.** Use a Windows host path: `C:\data` (mounted at `/c/data`,
   read-write), `C:\data:/data` or `C:\data:/data:ro`. Paths containing `,` can't be
   mounted.
@@ -161,5 +164,5 @@ prevent that:
 
 - `.gitattributes` keeps every tracked file LF, except `*.ps1`.
 - The Dockerfile strips CRs from everything it copies in, including gitignored files you
-  edited in Notepad (`allowed-domains.txt`, `extra-setup.sh`).
+  edited in Notepad (`config\allowed-domains.txt`, `config\extra-setup.sh`).
 - `entrypoint.sh` does the same for an `--allow-list` file.

@@ -218,3 +218,9 @@ __marimo__/
 .streamlit/secrets.toml
 .claude
 CLAUDE.md
+
+# Personal, per-machine config - see the .example next to each.
+config/run.local.sh
+config/run.local.ps1
+config/allowed-domains.txt
+config/extra-setup.sh

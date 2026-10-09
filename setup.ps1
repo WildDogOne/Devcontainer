@@ -1,4 +1,4 @@
-# One-time Windows host setup for claudecontainer: installs what build.ps1/run.ps1
+# One-time Windows host setup for this sandbox: installs what build.ps1/run.ps1
 # need - WSL2, Docker Desktop (WSL2 backend) and, unless told otherwise, Git for
 # Windows. Safe to re-run: anything already in place is skipped (WSL just gets
 # `wsl --update`d).
@@ -27,7 +27,7 @@ Set-StrictMode -Version 2.0
 # magnitude in Windows PowerShell 5.1.
 $ProgressPreference = 'SilentlyContinue'
 
-. (Join-Path $PSScriptRoot 'windows-common.ps1')
+. (Join-Path $PSScriptRoot 'lib\windows-common.ps1')
 Assert-Windows
 
 function Step([string]$msg) { Write-Host ''; Write-Host "==> $msg" -ForegroundColor Cyan }

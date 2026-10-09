@@ -1,8 +1,8 @@
 #!/bin/sh
 # Container entrypoint. Runs as root (needed to start dockerd/squid below), then drops
-# to dev and execs the command docker run was given (default: an interactive `claude`
-# session) - no persistent daemon, no listening port; the container exits when that
-# command does. Meant to be started fresh per session via run.sh, not left running.
+# to dev and execs the command docker run was given (default: the harness's own
+# `command` from harness.conf, e.g. an interactive `claude` session) - no persistent
+# daemon, no listening port; the container exits when that command does. Meant to be started fresh per session via run.sh, not left running.
 set -eu
 
 # Egress allowlist proxy first, so dockerd's own image pulls go through it too. /etc/
@@ -42,8 +42,8 @@ if [ "${SQUID_ALLOW_INTERNET:-0}" = "1" ]; then
 fi
 
 # run.sh passes the invoking host user's UID/GID - remap dev (1000:1000 in the image) to
-# them so files written to the bind mounts ($PWD, ~/.claude, --mount) stay owned by that
-# user on the host. Has to happen before anything below chowns to dev. -o: the host IDs
+# them so files written to the bind mounts ($PWD, the harness's state, --mount) stay
+# owned by that user on the host. Has to happen before anything below chowns to dev. -o: the host IDs
 # may already be taken inside the image (e.g. GID 100 "users", macOS's GID 20) - a
 # shared numeric ID is harmless here, failing to start isn't. usermod also re-chowns
 # /home/dev (the only dev-owned path in the image), but only its UID - hence the
@@ -93,12 +93,12 @@ EOF
 git config --system http.proxy "http://127.0.0.1:3128"
 git config --system https.proxy "http://127.0.0.1:3128"
 
-# run.sh mounts ~/.claude/~/.claude.json at the host's own $HOME path (see run.sh for
-# why) and passes that path through as HOST_HOME. dev's own passwd-registered home
-# stays /home/dev, but dev's *session* HOME needs to point at HOST_HOME instead so
-# Claude Code's own $HOME-derived paths (e.g. the plugin marketplace's recorded
-# "installLocation") match what was recorded when `claude` last ran natively on the
-# host. Falls back to /home/dev if run without run.sh (e.g. a bare `docker run`).
+# run.sh mounts the harness's state/config (e.g. ~/.claude) at the host's own $HOME
+# path (see run.sh for why) and passes that path through as HOST_HOME. dev's own
+# passwd-registered home stays /home/dev, but dev's *session* HOME needs to point at
+# HOST_HOME instead so the harness's own $HOME-derived paths (e.g. Claude Code's
+# recorded plugin "installLocation") match what was recorded when it last ran natively
+# on the host. Falls back to /home/dev if run without run.sh (e.g. a bare `docker run`).
 # HOST_HOME itself is mostly other bind mounts' auto-created parent scaffolding
 # (Docker creates missing mount-point parents in the container's own writable layer,
 # not on the host), owned by root by default - chown just the top level so dev can
@@ -108,30 +108,37 @@ export HOME="${HOST_HOME:-/home/dev}"
 mkdir -p "$HOME"
 chown dev:dev "$HOME"
 
-# run.sh (without --allow-config) mounts the host's ~/.claude.json read-only here instead
-# of at $HOME/.claude.json. Claude Code rewrites that file on every start, so a plain :ro
-# mount would break it - copy it into the container's writable layer instead: claude
-# can change it freely, but nothing reaches the host and it's discarded with the
-# container (--rm).
-if [ -f /etc/claudecontainer/claude.json.host ]; then
-  cp /etc/claudecontainer/claude.json.host "$HOME/.claude.json"
-  chown dev:dev "$HOME/.claude.json"
-  chmod 600 "$HOME/.claude.json"
+# run.sh (without --allow-config) mounts the harness's `staged` files (harness.conf)
+# read-only under /etc/devcontainer/staged/, at their path relative to $HOME, instead of
+# at $HOME itself. The harness rewrites them on every start (e.g. ~/.claude.json), so a
+# plain :ro mount would break it - copy them into the container's writable layer
+# instead: the harness can change them freely, but nothing reaches the host and they're
+# discarded with the container (--rm).
+if [ -d /etc/devcontainer/staged ]; then
+  (cd /etc/devcontainer/staged && find . -type f) | while IFS= read -r rel; do
+    rel="${rel#./}"
+    mkdir -p "$(dirname "$HOME/$rel")"
+    cp "/etc/devcontainer/staged/$rel" "$HOME/$rel"
+    chown dev:dev "$HOME/$rel"
+    chmod 600 "$HOME/$rel"
+  done
 fi
 
-# claude starts in auto permission mode here by default - the sandbox (no host access
-# beyond the mounts, read-only config, egress allowlist) is what makes that acceptable,
-# so it's set here rather than in ~/.claude/settings.json, which would also apply to
-# `claude` run natively on the host. Forwarded args come after it, so e.g.
+# Default command from the harness.conf baked into the image (see harnesses/README.md).
+# Sandbox-friendly defaults belong there rather than in the harness's own config on the
+# host - e.g. Claude Code's `--permission-mode auto`, which the sandbox (no host access
+# beyond the mounts, read-only config, egress allowlist) is what makes acceptable, but
+# which shouldn't apply to `claude` run natively. Forwarded args come after it, so e.g.
 # `run.sh --permission-mode manual` still overrides it (last one wins).
+harness_command="$(sed -n 's/^command=//p' /etc/devcontainer/harness.conf | tail -n 1)"
 if [ "$#" -eq 0 ]; then
-  set -- zsh -lc 'exec claude --permission-mode auto'
+  set -- zsh -lc "exec $harness_command"
 elif [ "${1#-}" != "$1" ]; then
   # First arg is a flag (e.g. --continue, --resume) rather than a full command
-  # override - forward it to `claude` instead of trying to exec a flag as a program.
+  # override - forward it to the harness instead of trying to exec a flag as a program.
   # `zsh -lc 'script' zsh "$@"` forwards the remaining args as the script's own $@
   # (same positional-forwarding trick as the sudo call below would use for su).
-  set -- zsh -lc 'exec claude --permission-mode auto "$@"' zsh "$@"
+  set -- zsh -lc "exec $harness_command \"\$@\"" zsh "$@"
 fi
 
 # sudo (not `su -l`): su's login-session setup cd's to the target user's home as part
