@@ -219,11 +219,12 @@ if ($showHelp) {
 
   @"
 Usage: run.ps1 [--harness <name>] [--host-network] [--allow-list <path> | --allow-internet]
-               [--allow-container] [--allow-config] [--mount <path|host:container[:ro]>]...
+               [--allow-container] [--allow-config] [--sysbox] [--mount <path|host:container[:ro]>]...
                [-h|--help] [harness-args... | command...]
 
 Windows/Docker Desktop version of run.sh - same flags, see run.sh --help or README.md
-for what each one does. --sysbox isn't available here. Mount specs take Windows host
+for what each one does. --sysbox is rejected here (sysbox-runc can't run in Docker
+Desktop's VM). Mount specs take Windows host
 paths: C:\data (-> /c/data, read-write), C:\data:/data, C:\data:/data:ro.
 Available harnesses: $available
 
@@ -235,7 +236,7 @@ Effective config on this machine:
   Harness:        $harnessDesc
   Image:          $image
   Network:        $netDesc
-  Runtime:        --privileged (sysbox not available on Docker Desktop)
+  Runtime:        --privileged (always; --sysbox is rejected on Docker Desktop)
   Allowlist:      $listDesc
   Docker socket:  $sockDesc
   Harness config: $cfgDesc

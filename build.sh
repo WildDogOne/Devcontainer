@@ -24,7 +24,9 @@ fi
 
 for harness in "$@"; do
   if [ ! -f "harnesses/$harness/harness.conf" ]; then
-    echo "build.sh: unknown harness '$harness' - available:" $(cd harnesses && ls -d */ | tr -d /) >&2
+    avail=""
+    for dir in harnesses/*/; do name="${dir%/}"; avail="$avail ${name#harnesses/}"; done
+    echo "build.sh: unknown harness '$harness' - available: ${avail# }" >&2
     exit 1
   fi
 done
