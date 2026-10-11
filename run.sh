@@ -286,6 +286,11 @@ EOF
     echo "    $HOME/$entry -> $HOME/$entry (dev's \$HOME is set to match, see README.md)"
   done
   if [[ "$allow_config" -eq 1 ]]; then
+    for entry in ${config_ro_paths[@]+"${config_ro_paths[@]}"}; do
+      if [[ -e "$HOME/$entry" ]]; then
+        echo "    $HOME/$entry -> $HOME/$entry"
+      fi
+    done
     for entry in ${harness_staged[@]+"${harness_staged[@]}"}; do
       echo "    $HOME/$entry -> $HOME/$entry"
     done
@@ -369,8 +374,15 @@ fi
 # mounts nest inside the rw state mounts above (docker mounts parents first). Staged
 # files can't just be :ro since the harness rewrites them on every start, so they're
 # mounted read-only under /etc/devcontainer/staged/ and entrypoint.sh copies them into
-# the container's writable layer.
+# the container's writable layer. With --allow-config the config entries are still
+# mounted, just read-write: one outside every state dir (opencode's ~/.config/opencode)
+# would otherwise not be in the container at all.
 if [[ "$allow_config" -eq 1 ]]; then
+  for entry in ${config_ro_paths[@]+"${config_ro_paths[@]}"}; do
+    if [[ -e "$HOME/$entry" ]]; then
+      docker_args+=(-v "$HOME/$entry:$HOME/$entry")
+    fi
+  done
   for entry in ${harness_staged[@]+"${harness_staged[@]}"}; do
     docker_args+=(-v "$HOME/$entry:$HOME/$entry")
   done

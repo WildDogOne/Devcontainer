@@ -16,9 +16,9 @@ the container is gone.
   through package registries, GitHub, Docker Hub and the agent's own API.
 - **Docker inside:** each session has its own nested Docker daemon, so `docker` and
   `docker compose` work without touching the host's.
-- **Pluggable harnesses:** Claude Code and [Hermes Agent](#hermes-agent) ship today.
-  Each tool is a small folder under [`harnesses/`](harnesses/), so adding another
-  (e.g. opencode) needs no changes to the sandbox itself.
+- **Pluggable harnesses:** Claude Code, [Hermes Agent](#hermes-agent) and
+  [opencode](#opencode) ship today. Each tool is a small folder under
+  [`harnesses/`](harnesses/), so adding another needs no changes to the sandbox itself.
 
 **What it isn't:** a hard security boundary. The proxy guards against accidents, but
 a tool that ignores proxy settings can still reach the network, and the container runs
@@ -108,6 +108,29 @@ Set `HARNESS=hermes` in `config/run.local.sh` to make it the default.
 - The image is large (about 6 GB), since Hermes brings its own Python, Node and UI
   builds. The first launch for each home also prepares a dependency environment in
   `~/.hermes/installs` (about 670 MB), which takes a minute.
+
+### opencode
+
+[opencode](https://opencode.ai) keeps its sessions and login in
+`~/.local/share/opencode` and its settings in `~/.config/opencode`:
+
+```sh
+./build.sh opencode                                # devcontainer:opencode
+~/Devcontainer/run.sh --harness opencode           # then /connect (or `opencode auth login`) to add a provider
+```
+
+Logins and API keys live with the session data, so they persist without
+`--allow-config`; only `~/.config/opencode` (settings, MCP servers, plugins, agents,
+commands) is read-only. Set `HARNESS=opencode` in `config/run.local.sh` to make it the
+default.
+
+- The allowlist covers opencode's own services (model catalog, Zen), Anthropic, OpenAI,
+  OpenRouter and GitHub Copilot. Other providers need their API domain in
+  `config/allowed-domains.txt` (then rebuild).
+- `~/.cache/opencode` isn't shared with the host: it holds the LSP servers and npm
+  packages opencode downloads and executes. They're fetched again in each session.
+- Self-update is off inside the container; `./build.sh opencode` picks up the latest
+  release.
 
 ## Usage
 

@@ -9,6 +9,11 @@ the change takes effect.
 
 ### Added
 
+- Third harness: [opencode](https://opencode.ai) (`./build.sh opencode`,
+  `run.sh --harness opencode`). Sessions and logins live in `~/.local/share/opencode`
+  and `~/.local/state/opencode`; `~/.config/opencode` is read-only unless
+  `--allow-config`, and `~/.cache/opencode` (downloaded LSP servers, npm packages) stays
+  inside the container.
 - Second harness: [Hermes Agent](https://github.com/NousResearch/hermes-agent)
   (`./build.sh hermes`, `run.sh --harness hermes`). Its state and config live in
   `~/.hermes`; the install itself is baked into the image under `/opt/hermes`.
